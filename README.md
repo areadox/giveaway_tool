@@ -73,7 +73,7 @@ cargo build --release      # Ergebnis: target/release/CyberGiveaway(.exe)
 cargo test
 ```
 
-GitHub Actions baut bei jedem Push eine Windows- und eine Linux-Version. Ein Tag `v*` erzeugt ein Release mit beiden Paketen.
+GitHub Actions baut bei jedem Push eine Windows- und eine Linux-Version. Wird auf GitHub ein Release (z. B. `v0.0.1`) veröffentlicht, hängt der Workflow beide Pakete daran an.
 
 Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headless`
 
