@@ -1,0 +1,57 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --release
+      - run: cargo build --release
+      - name: Paket schnüren
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/CyberGiveaway.exe dist/
+          Copy-Item config.example.json dist/
+          Copy-Item README.md dist/
+          Compress-Archive -Path dist/* -DestinationPath CyberGiveaway-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CyberGiveaway-windows-x64
+          path: CyberGiveaway-windows-x64.zip
+      - name: Release (nur bei Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: CyberGiveaway-windows-x64.zip
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --release
+      - run: cargo build --release
+      - run: tar czf CyberGiveaway-linux-x64.tar.gz -C target/release CyberGiveaway -C ../.. config.example.json README.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CyberGiveaway-linux-x64
+          path: CyberGiveaway-linux-x64.tar.gz
+      - name: Release (nur bei Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: CyberGiveaway-linux-x64.tar.gz

@@ -1,0 +1,4 @@
+/target
+config.json
+giveaway.db
+*.db-journal

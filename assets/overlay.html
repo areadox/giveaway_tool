@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matrix-Run Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0e0b26; --ink2:#161238; --line:#3a3170;
+  --decker:#2ee6c5; --host:#ff3fa4; --glitch:#ff5a36; --edge:#a58bff; --gold:#ffd166;
+  --text:#e8e3ff; --muted:#9a93c9;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:var(--text);
+  font:500 16px/1.35 "Chakra Petch","Bahnschrift","Segoe UI",sans-serif}
+.stage{position:fixed;inset:0;padding:clamp(10px,1.6vw,28px);display:flex;align-items:center;justify-content:center;
+  transition:opacity .4s ease;opacity:1}
+body[data-visible="0"] .stage{opacity:0}
+.panel{background:linear-gradient(160deg,rgba(22,18,56,.93),rgba(14,11,38,.9));border:1px solid var(--line);
+  border-radius:4px;position:relative;min-width:0;min-height:0}
+.panel::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:4px;
+  background:repeating-linear-gradient(90deg,transparent 0 46px,rgba(165,139,255,.05) 46px 47px),
+             repeating-linear-gradient(0deg,transparent 0 46px,rgba(165,139,255,.05) 46px 47px)}
+
+/* ---------- Run-Layout ---------- */
+.run{width:min(1600px,100%);height:min(900px,100%);display:grid;grid-template-columns:minmax(0,1.7fr) minmax(280px,.8fr);gap:14px}
+.left{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:0;padding:18px 22px}
+.hosthead{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px}
+.hostname{font-size:clamp(20px,1.9vw,30px);font-weight:700;color:var(--host);letter-spacing:.01em}
+.hostmeta{color:var(--muted);font-size:clamp(12px,1vw,15px)}
+.asdf{display:flex;gap:6px;margin-left:auto}
+.asdf span{border:1px solid var(--line);padding:2px 8px;font-size:13px;color:var(--text)}
+.asdf b{color:var(--host);font-weight:600;margin-right:4px}
+.phase{font-size:clamp(14px,1.25vw,19px);margin-top:8px;color:var(--text)}
+.phase em{font-style:normal;color:var(--decker);font-weight:600;margin-right:10px}
+.graphwrap{position:relative;min-height:0}
+canvas{width:100%;height:100%;display:block}
+
+/* Würfelschale */
+.tray{border-top:1px solid var(--line);padding-top:12px;min-height:200px}
+.action{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
+.action h2{margin:0;font-size:clamp(18px,1.6vw,26px);font-weight:700}
+.actor{font-size:13px;padding:1px 8px;border-radius:2px;background:var(--decker);color:var(--ink);font-weight:700}
+.actor.host,.actor.ice{background:var(--host)}
+.pool{display:grid;grid-template-columns:minmax(150px,240px) 1fr auto;align-items:center;gap:14px;margin:6px 0}
+.pool .lbl{font-size:13px;color:var(--muted);line-height:1.2}
+.pool .lbl strong{display:block;color:var(--text);font-size:14px;font-weight:600}
+.dice{display:flex;flex-wrap:wrap;gap:6px}
+.hits{font-size:clamp(18px,1.5vw,24px);font-weight:700;min-width:96px;text-align:right}
+.hits small{font-size:12px;font-weight:500;color:var(--muted);display:block}
+.die{width:32px;height:32px;border-radius:6px;background:#efeaff;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);
+  padding:4px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.die i{width:6px;height:6px;border-radius:50%;background:#2a2450;place-self:center;visibility:hidden}
+.die.hit{background:var(--decker);box-shadow:0 0 12px rgba(46,230,197,.65),inset 0 -3px 0 rgba(0,0,0,.2)}
+.die.one{background:var(--glitch)}
+.die.one i{background:#fff}
+.die.miss{opacity:.55}
+.dice.host .die.hit{background:var(--host);box-shadow:0 0 12px rgba(255,63,164,.6),inset 0 -3px 0 rgba(0,0,0,.2)}
+.dice.rolling .die{animation:tumble .12s linear infinite}
+@keyframes tumble{50%{transform:rotate(14deg) translateY(-2px)}}
+.verdict{display:flex;align-items:center;gap:12px;margin-top:10px}
+.verdict .v{font-size:clamp(20px,1.9vw,30px);font-weight:700;letter-spacing:.04em;color:var(--decker)}
+.verdict .v.fail{color:var(--host)}
+.tag{font-size:13px;font-weight:700;padding:2px 9px;border-radius:2px}
+.tag.glitch{background:var(--glitch);color:#fff}
+.tag.edge{background:var(--edge);color:var(--ink)}
+.cands{display:flex;flex-wrap:wrap;gap:8px;padding-top:4px}
+.cand{padding:6px 12px;border:1px solid var(--line);font-size:16px;transition:opacity .35s,color .35s}
+.cand.raus{opacity:.25;text-decoration:line-through}
+.cand.gewinner{border-color:var(--gold);color:var(--gold);box-shadow:0 0 14px rgba(255,209,102,.4)}
+.traynote{color:var(--muted);font-size:15px}
+.announce{font-size:clamp(26px,2.6vw,42px);font-weight:700;padding-top:18px;color:var(--text)}
+.announce.threat{color:var(--host);animation:alarm 1s steps(2) 3}
+
+/* Charakterbogen */
+.sheet{padding:18px 18px 12px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.who{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.who strong{font-size:20px;color:var(--decker)}
+.who span{font-size:13px;color:var(--muted);text-align:right}
+.row h3{margin:0 0 5px;font-size:14px;font-weight:600;color:var(--muted);display:flex;justify-content:space-between}
+.row h3 b{color:var(--text);font-weight:600}
+.os{height:12px;display:grid;grid-template-columns:repeat(40,1fr);gap:2px}
+.os i{background:#251f52}
+.os i.on{background:var(--gold)}
+.os.hot i.on{background:var(--glitch)}
+.os.hot{animation:alarm 1s steps(2) infinite}
+@keyframes alarm{50%{filter:brightness(1.6)}}
+.boxes{display:flex;flex-wrap:wrap;gap:3px}
+.boxes i{width:17px;height:17px;border:1px solid #6b62a8;position:relative}
+.boxes i.x::after{content:"";position:absolute;inset:2px;background:linear-gradient(45deg,transparent 42%,var(--host) 42% 58%,transparent 58%),linear-gradient(-45deg,transparent 42%,var(--host) 42% 58%,transparent 58%)}
+.marks,.edgepts{display:flex;gap:6px}
+.marks i{width:16px;height:16px;transform:rotate(45deg);border:2px solid var(--decker)}
+.marks i.on{background:var(--decker)}
+.edgepts i{width:14px;height:14px;border-radius:50%;border:2px solid var(--edge)}
+.edgepts i.on{background:var(--edge)}
+.twin{display:flex;gap:18px}
+.alert{font-weight:700;font-size:14px;color:var(--muted)}
+.alert.passiv{color:var(--gold)}
+.alert.aktiv{color:var(--glitch)}
+.ice{display:flex;flex-direction:column;gap:4px}
+.ice div{display:flex;justify-content:space-between;font-size:14px;padding:3px 8px;border-left:3px solid var(--host);background:rgba(255,63,164,.08)}
+.ice div.down{border-color:#4a437f;background:none;color:var(--muted);text-decoration:line-through}
+.log{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:3px;border-top:1px solid var(--line);padding-top:8px;
+  mask-image:linear-gradient(to bottom,transparent,#000 22%)}
+.log p{margin:0;font-size:13px;line-height:1.3;color:var(--muted)}
+.log p.good{color:#a6f5e6}.log p.bad{color:#ffb0d6}.log p.warn{color:var(--gold)}.log p.edge{color:var(--edge)}.log p:last-child{color:var(--text)}
+
+/* ---------- Teilnahmephase ---------- */
+.open{width:min(760px,100%);padding:28px 32px;display:grid;grid-template-columns:1fr auto;gap:6px 24px}
+.open h1{margin:0;font-size:clamp(28px,3vw,46px);line-height:1.05;font-weight:700}
+.open .call{grid-column:1/-1;font-size:clamp(18px,1.7vw,24px);color:var(--muted)}
+.open .call kbd{font:inherit;font-weight:700;color:var(--ink);background:var(--decker);padding:0 10px;border-radius:2px}
+.clock{grid-row:1/3;grid-column:2;text-align:right;font-size:clamp(34px,4vw,64px);font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums}
+.clock.urgent{color:var(--glitch)}
+.clock small{display:block;font-size:14px;font-weight:500;color:var(--muted)}
+.joined{grid-column:1/-1;margin-top:14px;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-wrap:wrap;gap:8px}
+.joined span{padding:4px 10px;border:1px solid var(--line);font-size:15px}
+.joined span:first-child{border-color:var(--decker);color:var(--decker)}
+.count{grid-column:1/-1;color:var(--muted);font-size:15px;margin-top:12px}
+.count b{color:var(--text);font-size:20px}
+
+/* ---------- Gewinner ---------- */
+.winner{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;min-width:min(780px,90vw);text-align:center;
+  padding:28px 40px 32px;background:rgba(14,11,38,.97);border:2px solid var(--gold);box-shadow:0 0 60px rgba(255,209,102,.35)}
+.winner small{display:block;font-size:clamp(14px,1.4vw,20px);color:var(--gold);letter-spacing:.05em}
+.winner strong{display:block;font-size:clamp(36px,6vw,92px);line-height:1.05;margin-top:6px;overflow-wrap:anywhere;color:var(--text)}
+.winner p{margin:10px 0 0;color:var(--muted);font-size:15px}
+.winner.show{animation:drop .6s cubic-bezier(.2,1.4,.4,1)}
+@keyframes drop{from{transform:translate(-50%,-60%) scale(.9);opacity:0}}
+
+.idle{position:fixed;left:14px;bottom:12px;color:var(--muted);font-size:12px}
+.idle::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--decker);margin-right:6px}
+.idle.off::before{background:var(--glitch)}
+body[data-hide="1"] .idle{display:none}
+.demo{position:fixed;right:14px;bottom:12px;color:var(--edge);font-size:12px}
+[hidden]{display:none!important}
+
+body[data-view="graph"] .run{grid-template-columns:1fr}
+body[data-view="graph"] .sheet{display:none}
+body[data-view="log"] .run{grid-template-columns:1fr;max-width:460px}
+body[data-view="log"] .left{display:none}
+@media (max-width:820px){.run{grid-template-columns:1fr;grid-template-rows:1.3fr 1fr}.pool{grid-template-columns:1fr auto}.pool .lbl{grid-column:1/-1}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body data-visible="0">
+<main class="stage">
+  <section id="open" class="panel open" hidden>
+    <h1>Host-Zugang offen</h1>
+    <div id="clock" class="clock"></div>
+    <div class="call">Schreibe <kbd id="kw">!join</kbd> in den Chat, um deine Persona einzuschleusen.</div>
+    <div class="count"><b id="cnt">0</b> Personas erfasst</div>
+    <div id="joined" class="joined"></div>
+  </section>
+
+  <section id="run" class="run" hidden>
+    <div class="panel left">
+      <div>
+        <div class="hosthead">
+          <span id="host" class="hostname"></span>
+          <span id="hostmeta" class="hostmeta"></span>
+          <span id="asdf" class="asdf"></span>
+        </div>
+        <div id="phase" class="phase"></div>
+      </div>
+      <div class="graphwrap"><canvas id="graph"></canvas></div>
+      <div id="tray" class="tray"></div>
+    </div>
+    <aside class="panel sheet">
+      <div class="who"><strong id="decker"></strong><span id="deck"></span></div>
+      <div class="row"><h3>Overwatch-Wert <b id="osv"></b></h3><div id="os" class="os"></div></div>
+      <div class="twin">
+        <div class="row"><h3>Marken</h3><div id="marks" class="marks"></div></div>
+        <div class="row"><h3>Edge</h3><div id="edge" class="edgepts"></div></div>
+        <div class="row"><h3>Alarm</h3><div id="alert" class="alert"></div></div>
+      </div>
+      <div class="row"><h3>Matrix-Zustandsmonitor <b id="cmv"></b></h3><div id="cm" class="boxes"></div></div>
+      <div class="row"><h3>Geistiger Zustandsmonitor <b id="stv"></b></h3><div id="st" class="boxes"></div></div>
+      <div class="row" id="icerow"><h3>IC im Host</h3><div id="ice" class="ice"></div></div>
+      <div id="log" class="log"></div>
+    </aside>
+  </section>
+
+  <div id="winner" class="winner" hidden>
+    <small>Paydata extrahiert – der Gewinner ist</small>
+    <strong id="wname"></strong>
+    <p id="wnote"></p>
+  </div>
+</main>
+<div id="idle" class="idle">Overlay verbunden – wartet auf das Giveaway</div>
+<div id="demo" class="demo" hidden>Demo-Modus</div>
+
+<script>
+'use strict';
+const q=new URLSearchParams(location.search);
+const demo=q.get('demo')==='1'||location.pathname==='/test';
+const view=['graph','log'].includes(q.get('view'))?q.get('view'):'full';
+document.body.dataset.view=view;
+document.body.dataset.hide=q.get('hide')==='1'?'1':'0';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let S={visible:false,mode:'idle'};      // letzter Zustand
+let lastRoll=-1, lastWinner='', raf=0, frame=0, rollUntil=0;
+
+// Augen-Positionen im 3×3-Raster (Index 0..8)
+const PIPS={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+function die(v,cls){
+  const on=PIPS[v]||[];
+  let h='';for(let i=0;i<9;i++)h+=`<i style="visibility:${on.includes(i)?'visible':'hidden'}"></i>`;
+  return `<span class="die ${cls}" aria-label="${v}">${h}</span>`;
+}
+function diceRow(pool,side,rolling){
+  const d=pool.dice.map(v=>rolling?die(1+Math.floor(Math.random()*6),''):die(v,v>=5?'hit':v===1?'one':'miss')).join('');
+  return `<div class="dice ${side}${rolling?' rolling':''}">${d}</div>`;
+}
+function hitsWord(n){return n===1?'Erfolg':'Erfolge'}
+
+function renderTray(run,now){
+  const t=$('tray');const r=run.roll;
+  if(!r){
+    if(run.candidates&&run.candidates.length){
+      t.innerHTML=`<div class="action"><h2>Teilnehmerregister</h2></div><div class="cands">${
+        run.candidates.map(c=>`<span class="cand ${esc(c.state)}">${esc(c.name)}</span>`).join('')}</div>`;
+    }else{
+      const ic=run.phase==='IC'||run.phase==='DATENBOMBE'||run.phase==='KONVERGENZ';
+      t.innerHTML=`<div class="announce${ic?' threat':''}">${esc(run.phase_text||'')}</div>`;
+    }
+    return;
+  }
+  if(r.id!==lastRoll){lastRoll=r.id;rollUntil=now+520;}
+  const rolling=now<rollUntil;
+  const actorName=r.actor==='decker'?run.decker:(r.actor==='ice'?'IC':'Host');
+  const attSide=r.actor==='decker'?'':'host', defSide=r.actor==='decker'?'host':'';
+  let h=`<div class="action"><span class="actor ${esc(r.actor)}">${esc(actorName)}</span><h2>${esc(r.action)}</h2></div>`;
+  h+=`<div class="pool"><div class="lbl"><strong>${r.attacker.dice.length} W6</strong>${esc(r.attacker.label)}</div>${diceRow(r.attacker,attSide,rolling)}
+      <div class="hits">${rolling?'…':r.attacker.hits}<small>${rolling?'':hitsWord(r.attacker.hits)}</small></div></div>`;
+  if(r.defender){
+    h+=`<div class="pool"><div class="lbl"><strong>${r.defender.dice.length} W6</strong>${esc(r.defender.label)}</div>${diceRow(r.defender,defSide,rolling)}
+        <div class="hits">${rolling?'…':r.defender.hits}<small>${rolling?'':hitsWord(r.defender.hits)}</small></div></div>`;
+  }else if(r.threshold){
+    h+=`<div class="pool"><div class="lbl">Schwelle</div><div></div><div class="hits">${r.threshold}</div></div>`;
+  }
+  if(!rolling){
+    h+=`<div class="verdict"><span class="v ${r.success?'':'fail'}">${esc(r.verdict)}</span>`;
+    if(r.defender)h+=`<span class="traynote">Netto ${r.net>0?'+':''}${r.net}</span>`;
+    if(r.edge)h+=`<span class="tag edge">Edge: Sechser explodieren</span>`;
+    if(r.critical)h+=`<span class="tag glitch">Kritischer Patzer</span>`;
+    else if(r.glitch)h+=`<span class="tag glitch">Patzer</span>`;
+    h+=`</div>`;
+  }
+  t.innerHTML=h;
+}
+
+function boxes(el,n,max){let h='';for(let i=0;i<max;i++)h+=`<i class="${i<n?'x':''}"></i>`;el.innerHTML=h;}
+function renderSheet(run){
+  $('decker').textContent=run.decker;
+  $('deck').textContent=`${run.deck} · ${run.sim==='HEISS-SIM'?'Heiß-Sim':'Kalt-Sim'}`;
+  $('osv').textContent=`${run.os} / ${run.os_max}`;
+  let os='';for(let i=0;i<run.os_max;i++)os+=`<i class="${i<run.os?'on':''}"></i>`;
+  $('os').innerHTML=os;$('os').classList.toggle('hot',run.os>=30);
+  let m='';for(let i=0;i<3;i++)m+=`<i class="${i<run.marks?'on':''}"></i>`;$('marks').innerHTML=m;
+  let e='';for(let i=0;i<run.edge_max;i++)e+=`<i class="${i<run.edge?'on':''}"></i>`;$('edge').innerHTML=e;
+  const a=$('alert');a.textContent=run.alert==='KEIN ALARM'?'Kein':run.alert==='PASSIVER ALARM'?'Passiv':'Aktiv';
+  a.className='alert '+(run.alert==='AKTIVER ALARM'?'aktiv':run.alert==='PASSIVER ALARM'?'passiv':'');
+  $('cmv').textContent=`${run.matrix_cm} / ${run.matrix_max}`;boxes($('cm'),run.matrix_cm,run.matrix_max);
+  $('stv').textContent=`${run.stun} / ${run.stun_max}`;boxes($('st'),run.stun,run.stun_max);
+  $('icerow').hidden=!run.ice.length;
+  $('ice').innerHTML=run.ice.map(i=>`<div class="${i.status==='aktiv'?'':'down'}"><span>${esc(i.name)}</span><span>${i.status==='aktiv'?`${i.hp}/${i.hp_max}`:esc(i.status)}</span></div>`).join('');
+  $('log').innerHTML=run.log.slice(-14).map(l=>`<p class="${esc(l.tone)}">${esc(l.text)}</p>`).join('');
+}
+function renderRun(run){
+  $('host').textContent=run.host;
+  $('hostmeta').textContent=`Hoststufe ${run.host_rating}`;
+  const n=['A','S','D','F'];$('asdf').innerHTML=run.asdf.map((v,i)=>`<span><b>${n[i]}</b>${v}</span>`).join('');
+  $('phase').innerHTML=`<em>${esc(run.phase)}</em>${esc(run.phase_text)}`;
+  renderSheet(run);
+}
+
+// ---------- Knotenpfad (Canvas) ----------
+function hex(x,cx,cy,r){x.beginPath();for(let i=0;i<6;i++){const a=Math.PI/3*i+Math.PI/6;x.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a));}x.closePath();}
+function draw(){
+  raf=0;const run=S.run;if(!S.visible||!run){return;}
+  const c=$('graph'),rect=c.getBoundingClientRect(),dpr=devicePixelRatio||1;
+  if(rect.width<10||rect.height<10){raf=requestAnimationFrame(draw);return;}
+  c.width=Math.round(rect.width*dpr);c.height=Math.round(rect.height*dpr);
+  const x=c.getContext('2d');x.scale(dpr,dpr);const w=rect.width,h=rect.height;x.clearRect(0,0,w,h);
+  const N=run.nodes.length, r=Math.max(18,Math.min(44,h/5,w/(N*2.4)));
+  const pts=run.nodes.map((n,i)=>({x:r*1.4+(w-r*2.8)*i/(N-1),y:h/2+(i%2?-1:1)*h*0.16,n}));
+  // Verbindungen
+  for(let i=0;i<N-1;i++){const a=pts[i],b=pts[i+1],done=['done','target'].includes(a.n.status);
+    x.strokeStyle=done?'rgba(46,230,197,.7)':'rgba(165,139,255,.28)';x.lineWidth=done?2.5:1.5;x.setLineDash(done?[]:[5,6]);
+    x.beginPath();x.moveTo(a.x,a.y);x.lineTo(b.x,b.y);x.stroke();}
+  x.setLineDash([]);
+  // Datenpakete auf der aktiven Strecke
+  const ai=run.node; if(ai>0&&!run.done){const a=pts[ai-1],b=pts[ai];for(let k=0;k<3;k++){const t=((frame/50)+k/3)%1;
+    x.fillStyle='#2ee6c5';x.beginPath();x.arc(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,3,0,7);x.fill();}}
+  // Knoten
+  pts.forEach((p,i)=>{const st=p.n.status;
+    const col=st==='alert'?'#ff3fa4':st==='target'?'#ffd166':st==='done'?'#2ee6c5':st==='active'?'#e8e3ff':'#4a437f';
+    const pulse=(st==='active'||st==='alert')?Math.sin(frame*.12)*3:0;
+    x.shadowColor=col;x.shadowBlur=st==='locked'?0:14+pulse*2;
+    hex(x,p.x,p.y,r+pulse*.5);x.fillStyle='rgba(14,11,38,.95)';x.fill();x.lineWidth=st==='active'?3:2;x.strokeStyle=col;x.stroke();x.shadowBlur=0;
+    x.fillStyle=col;x.font=`700 ${Math.round(r*.42)}px "Chakra Petch",sans-serif`;x.textAlign='center';x.textBaseline='middle';
+    x.fillText(String(i+1),p.x,p.y);
+    x.font=`600 ${Math.max(11,Math.round(r*.32))}px "Chakra Petch",sans-serif`;x.fillStyle=st==='locked'?'#6b62a8':'#e8e3ff';
+    x.fillText(p.n.label,p.x,p.y+(i%2?-1:1)*(r+16));
+  });
+  // IC um den Sicherheitsknoten
+  const ice=run.ice.filter(i=>i.status==='aktiv'), sec=pts[3];
+  ice.forEach((ic,k)=>{const ang=frame*.03+k*2.1, rr=r*1.9;const ix=sec.x+Math.cos(ang)*rr, iy=sec.y+Math.sin(ang)*rr*.7;
+    x.shadowColor='#ff3fa4';x.shadowBlur=16;hex(x,ix,iy,r*.42);x.fillStyle=ic.kind==='black'?'#000':'#ff3fa4';x.fill();
+    x.strokeStyle='#ff3fa4';x.lineWidth=2;x.stroke();x.shadowBlur=0;
+    x.fillStyle=ic.kind==='black'?'#ff3fa4':'#0e0b26';x.font=`700 ${Math.round(r*.3)}px "Chakra Petch",sans-serif`;x.fillText('IC',ix,iy);});
+  // Persona
+  // Persona-Marker auf der Seite ohne Beschriftung
+  const pi=Math.min(run.node,N-1),p=pts[pi],bob=Math.sin(frame*.1)*3,dir=pi%2?1:-1;
+  const tip=p.y+dir*(r+10)+bob,base=p.y+dir*(r+24)+bob;
+  x.fillStyle=run.converged?'#ff5a36':'#2ee6c5';x.shadowColor=x.fillStyle;x.shadowBlur=18;
+  x.beginPath();x.moveTo(p.x,tip);x.lineTo(p.x-8,base);x.lineTo(p.x+8,base);x.closePath();x.fill();x.shadowBlur=0;
+  frame++;
+  renderTray(run,performance.now());
+  raf=requestAnimationFrame(draw);
+}
+function kick(){if(!raf)raf=requestAnimationFrame(draw);}
+
+// ---------- Gesamt-Render ----------
+function apply(st){
+  S=st;document.body.dataset.visible=st.visible?'1':'0';
+  $('idle').hidden=!!st.visible||demo;
+  const isRun=!!st.run&&(st.mode==='run'||st.mode==='winner');
+  $('open').hidden=isRun||st.mode!=='open';
+  $('run').hidden=!isRun;
+  if(st.mode==='open'){
+    $('kw').textContent=st.keyword||'!join';$('cnt').textContent=st.count||0;
+    const sec=Math.max(0,Math.ceil(st.timer_remaining||0));
+    $('clock').innerHTML=st.timer_active?`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}<small>bis zum Run</small>`:'<small>Ende per Hand</small>';
+    $('clock').classList.toggle('urgent',st.timer_active&&sec<=10);
+    $('joined').innerHTML=(st.recent||[]).map(n=>`<span>${esc(n)}</span>`).join('');
+  }
+  if(isRun){renderRun(st.run);kick();}
+  const wn=st.mode==='winner'&&st.winner;
+  $('winner').hidden=!wn;
+  if(wn){$('wname').textContent='@'+st.winner;
+    $('wnote').textContent=st.run&&st.run.converged?'GOD-Konvergenz – aber die Datei war schon raus.':`${st.count} Personas im Register · Overwatch ${st.run?st.run.os:0}/40`;
+    if(lastWinner!==st.winner){lastWinner=st.winner;$('winner').classList.remove('show');void $('winner').offsetWidth;$('winner').classList.add('show');}
+  }else lastWinner='';
+}
+
+// ---------- Live / Demo ----------
+let retry=500;
+function connect(){
+  const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
+  ws.onopen=()=>{retry=500;$('idle').className='idle';$('idle').textContent='Overlay verbunden – wartet auf das Giveaway';};
+  ws.onmessage=e=>{try{apply(JSON.parse(e.data))}catch(err){console.error(err)}};
+  ws.onclose=()=>{$('idle').className='idle off';$('idle').textContent='Keine Verbindung zum Giveaway-Tool';
+    apply({visible:false,mode:'idle'});setTimeout(connect,retry);retry=Math.min(10000,retry*1.7);};
+}
+async function runDemo(){
+  $('demo').hidden=false;
+  for(;;){
+    let data;try{data=await (await fetch('/api/demo')).json();}catch(e){await new Promise(r=>setTimeout(r,2000));continue;}
+    const names=data.participants;
+    // Teilnahmephase: 6 Sekunden mit eintreffenden Personas
+    for(let i=0;i<=12;i++){const shown=names.slice(0,Math.min(names.length,Math.floor(i*names.length/12)));
+      apply({visible:true,mode:'open',keyword:'!hack',count:shown.length,recent:shown.slice().reverse().slice(0,10),timer_active:true,timer_remaining:6-i*.5});
+      await new Promise(r=>setTimeout(r,500));}
+    const t0=performance.now();let idx=0;
+    while(idx<data.frames.length){
+      const el=(performance.now()-t0)/1000;
+      while(idx<data.frames.length&&data.frames[idx].t<=el){
+        const f=data.frames[idx];idx++;
+        apply({visible:true,mode:f.view.done?'winner':'run',run:f.view,winner:f.view.winner,count:names.length});
+      }
+      await new Promise(r=>setTimeout(r,50));
+    }
+    await new Promise(r=>setTimeout(r,6000));
+    apply({visible:false,mode:'idle'});await new Promise(r=>setTimeout(r,1500));
+  }
+}
+addEventListener('resize',kick);
+if(demo)runDemo();else connect();
+</script>
+</body>
+</html>
