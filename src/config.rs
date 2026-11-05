@@ -28,6 +28,8 @@ pub struct Config {
     pub hack_duration: f64,
     /// Name des Deckers im Overlay; leer = Twitch-Channel (neu in der Rust-Version).
     pub decker_name: String,
+    /// EVE-Charakternamen im Overlay durch „[EVE-NAME]“ ersetzen und keine Porträts zeigen.
+    pub hide_eve_names: bool,
     /// Unbekannte Schlüssel bleiben beim Speichern erhalten.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -53,6 +55,7 @@ impl Default for Config {
             eve_api_key: String::new(),
             eve2twitch_bot_name: String::new(),
             hack_duration: 30.0,
+            hide_eve_names: false,
             decker_name: String::new(),
             extra: Map::new(),
         }

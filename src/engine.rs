@@ -47,6 +47,42 @@ pub enum Inbound {
         login: String,
         ign: Option<String>,
     },
+    /// Charakter-ID (und Ticker) wurde über ESI nachgeschlagen.
+    IdResolved {
+        login: String,
+        info: Option<esi::EveInfo>,
+        error: Option<String>,
+    },
+}
+
+/// EVE-Daten eines Spielers für Overlay und Programmfenster.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct EveCard {
+    pub name: String,
+    pub id: Option<i64>,
+    pub corp: Option<String>,
+    pub alliance: Option<String>,
+    pub portrait: Option<String>,
+}
+
+pub fn portrait_url(id: i64, size: u32) -> String {
+    format!("https://images.evetech.net/characters/{id}/portrait?size={size}")
+}
+
+impl EveCard {
+    fn from_user(u: &crate::db::User) -> Option<Self> {
+        let name = u
+            .eve_character_name
+            .clone()
+            .filter(|n| !n.trim().is_empty())?;
+        Some(Self {
+            name,
+            id: u.eve_character_id,
+            corp: u.corp_ticker.clone(),
+            alliance: u.alliance_ticker.clone(),
+            portrait: u.eve_character_id.map(|id| portrait_url(id, 256)),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +127,7 @@ struct OverlayState<'a> {
     timer_total: u64,
     run: Option<&'a RunView>,
     winner: &'a str,
+    winner_eve: Option<&'a EveCard>,
     status: &'a str,
 }
 
@@ -103,6 +140,7 @@ pub struct Engine {
     pub active_keyword: String,
     pub winner: String,
     pub winner_display: String,
+    pub winner_eve: Option<EveCard>,
     pub status: String,
     pub status_tone: Tone,
     pub countdown_text: String,
@@ -152,6 +190,7 @@ impl Engine {
             active_keyword: keyword,
             winner: String::new(),
             winner_display: String::new(),
+            winner_eve: None,
             status: "BEREIT".into(),
             status_tone: Tone::Cyan,
             countdown_text: "—".into(),
@@ -308,6 +347,7 @@ impl Engine {
         self.participant_set.clear();
         self.winner.clear();
         self.winner_display.clear();
+        self.winner_eve = None;
         self.run_view = None;
         self.phase = Phase::Open;
         self.set_status("TEILNAHME OFFEN", Tone::Green);
@@ -403,6 +443,7 @@ impl Engine {
         self.phase = Phase::Running;
         self.winner.clear();
         self.winner_display.clear();
+        self.winner_eve = None;
         self.set_status("MATRIX-RUN LÄUFT", Tone::Red);
         self.log(
             format!(
@@ -425,6 +466,16 @@ impl Engine {
         let display = self.display_name(&winner);
         self.winner = winner.clone();
         self.winner_display = display.clone();
+        self.winner_eve = self
+            .db
+            .get_user(&winner)
+            .as_ref()
+            .and_then(EveCard::from_user);
+        if let Some(card) = &self.winner_eve {
+            if card.id.is_none() {
+                self.resolve_id(winner.clone(), card.name.clone());
+            }
+        }
         self.phase = Phase::Won;
         self.set_status("BREACH ERFOLGREICH", Tone::Green);
         self.log(
@@ -451,6 +502,7 @@ impl Engine {
         self.participant_set.clear();
         self.winner.clear();
         self.winner_display.clear();
+        self.winner_eve = None;
         self.run = None;
         self.run_view = None;
         self.win_sound_at = None;
@@ -642,10 +694,13 @@ impl Engine {
                     source: Some("eve2twitch-chat".into()),
                     ..Default::default()
                 }) {
-                    Ok(()) => self.log(
-                        format!("EVE-Zuordnung übernommen: @{twitch} // {ign}"),
-                        Tone::Cyan,
-                    ),
+                    Ok(()) => {
+                        self.log(
+                            format!("EVE-Zuordnung übernommen: @{twitch} // {ign}"),
+                            Tone::Cyan,
+                        );
+                        self.resolve_id(twitch.clone(), ign.clone());
+                    }
                     Err(e) => self.log(format!("EVE-Zuordnung fehlgeschlagen: {e}"), Tone::Red),
                 }
                 self.refresh_igns();
@@ -698,6 +753,72 @@ impl Engine {
             let name: String = msg.chars().skip(cmd.chars().count()).collect();
             self.handle_eve_link(user, name.trim().to_string());
         }
+    }
+
+    /// Schlägt Charakter-ID, Corp und Allianz zu einem IGN über ESI nach und
+    /// speichert sie (Quelle bleibt erhalten).
+    pub fn resolve_id(&mut self, login: String, name: String) {
+        let tx = self.tx.clone();
+        let db = self.db.clone();
+        std::thread::spawn(move || {
+            let msg = match esi::validate_character(&name) {
+                Ok(info) => {
+                    let old = db.get_user(&login).unwrap_or_default();
+                    match db.upsert_user(&NewUser {
+                        twitch_login: login.clone(),
+                        eve_character_name: Some(info.name.clone()),
+                        eve_character_id: Some(info.id),
+                        twitch_id: old.twitch_id,
+                        corp_ticker: info.corp.clone(),
+                        alliance_ticker: info.alliance.clone(),
+                        source: old.source.or(Some("esi".into())),
+                    }) {
+                        Ok(()) => Inbound::IdResolved {
+                            login,
+                            info: Some(info),
+                            error: None,
+                        },
+                        Err(e) => Inbound::IdResolved {
+                            login,
+                            info: None,
+                            error: Some(e.to_string()),
+                        },
+                    }
+                }
+                Err(e) => Inbound::IdResolved {
+                    login,
+                    info: None,
+                    error: Some(e),
+                },
+            };
+            let _ = tx.send(msg);
+        });
+    }
+
+    /// Ergänzt für alle Zuordnungen ohne Charakter-ID die ID über ESI.
+    pub fn resolve_missing_ids(&mut self) -> usize {
+        let todo: Vec<(String, String)> = self
+            .db
+            .list_users()
+            .into_iter()
+            .filter(|u| u.eve_character_id.is_none())
+            .filter_map(|u| {
+                u.eve_character_name
+                    .filter(|n| !n.trim().is_empty())
+                    .map(|n| (u.twitch_login, n))
+            })
+            .collect();
+        let n = todo.len();
+        for (login, name) in todo {
+            self.resolve_id(login, name);
+        }
+        if n > 0 {
+            self.log(
+                format!("Suche Charakter-IDs für {n} Zuordnung(en) …"),
+                Tone::Cyan,
+            );
+        }
+        n
     }
 
     fn handle_eve_link(&mut self, login: String, name: String) {
@@ -757,6 +878,29 @@ impl Engine {
                     }
                     self.add_participant(&login);
                 }
+                Inbound::IdResolved { login, info, error } => match info {
+                    Some(info) => {
+                        self.log(
+                            format!("EVE-Charakter-ID für @{login} ergänzt ({}).", info.id),
+                            Tone::Dark,
+                        );
+                        if login == self.winner {
+                            self.winner_eve = self
+                                .db
+                                .get_user(&login)
+                                .as_ref()
+                                .and_then(EveCard::from_user);
+                        }
+                        self.refresh_igns();
+                    }
+                    None => self.log(
+                        format!(
+                            "Charakter-ID für @{login} nicht gefunden: {}",
+                            error.unwrap_or_default()
+                        ),
+                        Tone::Yellow,
+                    ),
+                },
                 Inbound::EveDone { login, ign, error } => {
                     if let Some(i) = ign {
                         self.eve_cache.insert(login.clone(), i.clone());
@@ -813,10 +957,17 @@ impl Engine {
                 None
             },
             winner: &self.winner,
+            winner_eve: if self.cfg.hide_eve_names {
+                None
+            } else {
+                self.winner_eve.as_ref()
+            },
             status: &self.status,
         };
         let mut v = serde_json::to_value(&st).unwrap_or(Value::Null);
-        scrub(&mut v, self.igns.as_ref());
+        if self.cfg.hide_eve_names {
+            scrub(&mut v, self.igns.as_ref());
+        }
         v.to_string()
     }
 
@@ -980,6 +1131,7 @@ mod tests {
             keyword: "!hack".into(),
             sound: false,
             hack_duration: 8.0,
+            hide_eve_names: true,
             ..Default::default()
         };
         let mut e = Engine::new(cfg, db);
@@ -1020,6 +1172,45 @@ mod tests {
         assert!(!json.to_lowercase().contains("bobby pilot"));
         e.reset();
         assert_eq!(e.phase, Phase::Ready);
+        e.shutdown();
+    }
+
+    #[test]
+    fn winner_portrait_in_overlay() {
+        let dir = std::env::temp_dir().join(format!("cg-eve-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        db.upsert_user(&NewUser {
+            twitch_login: "areadox".into(),
+            eve_character_name: Some("daulin".into()),
+            eve_character_id: Some(2112625428),
+            corp_ticker: Some("ABC".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        let cfg = Config {
+            web_port: 18866,
+            sound: false,
+            ..Default::default()
+        };
+        let mut e = Engine::new(cfg, db);
+        e.toggle_entries("!join", "0");
+        e.tx.send(Inbound::Chat {
+            user: "areadox".into(),
+            msg: "!join".into(),
+        })
+        .unwrap();
+        e.tick();
+        e.finish_breach("areadox".into());
+        let json = e.overlay_json();
+        assert!(json.contains("images.evetech.net/characters/2112625428/portrait"));
+        assert!(json.contains("\"name\":\"daulin\""));
+        assert_eq!(e.winner_eve.as_ref().unwrap().corp.as_deref(), Some("ABC"));
+        e.cfg.hide_eve_names = true;
+        e.refresh_igns();
+        let hidden = e.overlay_json();
+        assert!(!hidden.contains("portrait"));
+        assert!(!hidden.to_lowercase().contains("daulin"));
         e.shutdown();
     }
 

@@ -107,6 +107,8 @@ pub struct GuiApp {
 impl GuiApp {
     pub fn new(cc: &eframe::CreationContext<'_>, engine: Arc<Mutex<Engine>>) -> Self {
         style(&cc.egui_ctx);
+        // Lädt EVE-Porträts direkt von images.evetech.net
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         let ctx = cc.egui_ctx.clone();
         let (keyword, hack, duration, needs_setup) = {
             let mut e = engine.lock().expect("engine");
@@ -271,12 +273,32 @@ impl eframe::App for GuiApp {
                     };
                     let blink = !e.winner.is_empty()
                         && (ctx.input(|i| i.time) * 1000.0 / 450.0) as i64 % 2 == 0;
-                    ui.label(
-                        RichText::new(format!("GEWINNER: {winner}"))
-                            .color(if blink { RED } else { YELLOW })
-                            .size(16.0)
-                            .strong(),
-                    );
+                    ui.horizontal(|ui| {
+                        if let Some(id) = e.winner_eve.as_ref().and_then(|c| c.id) {
+                            portrait(ui, id, 64.0);
+                        }
+                        ui.vertical(|ui| {
+                            ui.label(
+                                RichText::new(format!("GEWINNER: {winner}"))
+                                    .color(if blink { RED } else { YELLOW })
+                                    .size(16.0)
+                                    .strong(),
+                            );
+                            if let Some(c) = &e.winner_eve {
+                                let tick = [
+                                    c.corp.as_ref().map(|t| format!("[{t}]")),
+                                    c.alliance.as_ref().map(|t| format!("<{t}>")),
+                                ]
+                                .into_iter()
+                                .flatten()
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                                ui.label(
+                                    RichText::new(format!("EVE: {} {tick}", c.name)).color(CYAN),
+                                );
+                            }
+                        });
+                    });
                     if !e.winner.is_empty() {
                         ctx.request_repaint_after(Duration::from_millis(150));
                     }
@@ -513,6 +535,10 @@ impl GuiApp {
                     .resizable(false)
                     .open(&mut keep)
                     .show(ctx, |ui| {
+                        if let Ok(id) = edit.eve_id.trim().parse::<i64>() {
+                            portrait(ui, id, 128.0);
+                            ui.add_space(4.0);
+                        }
                         egui::Grid::new("edit")
                             .num_columns(2)
                             .spacing([10.0, 8.0])
@@ -666,6 +692,9 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
                 ui.label(RichText::new("EVE-Modus").color(CYAN));
                 ui.checkbox(&mut d.eve_enabled, "aktiv");
                 ui.end_row();
+                ui.label(RichText::new("EVE-Namen im Overlay").color(CYAN));
+                ui.checkbox(&mut d.hide_eve_names, "verbergen (kein Porträt, Name als [EVE-NAME])");
+                ui.end_row();
                 field(
                     ui,
                     "EVE-Befehl",
@@ -686,7 +715,7 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
         ui.add_space(10.0);
         ui.label(
             RichText::new(
-                "EVE-Charakternamen werden im Overlay automatisch durch [EVE-NAME] ersetzt.",
+                "Gewinnt ein registrierter Spieler, zeigt das Overlay sein EVE-Porträt mit Name und Tickern.",
             )
             .color(DIM)
             .size(11.0),
@@ -730,6 +759,20 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
             st.rows = engine.lock().expect("engine").db.list_users();
             st.selected = None;
         }
+        if ui
+            .button("Fehlende IDs ergänzen")
+            .on_hover_text(
+                "Charakter-ID, Corp und Allianz über ESI nachschlagen – nötig für das Porträt",
+            )
+            .clicked()
+        {
+            let n = engine.lock().expect("engine").resolve_missing_ids();
+            st.info = Some(if n == 0 {
+                "Alle Zuordnungen haben bereits eine Charakter-ID.".into()
+            } else {
+                format!("Suche läuft für {n} Zuordnung(en) – die Tabelle aktualisiert sich selbst.")
+            });
+        }
     });
     if st.confirm_delete {
         if let Some(u) = st.selected.and_then(|i| st.rows.get(i)).cloned() {
@@ -760,6 +803,8 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
     egui_extras::TableBuilder::new(ui)
         .striped(true)
         .sense(egui::Sense::click())
+        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+        .column(egui_extras::Column::exact(40.0))
         .column(egui_extras::Column::initial(150.0).resizable(true))
         .column(egui_extras::Column::initial(170.0).resizable(true))
         .column(egui_extras::Column::initial(100.0).resizable(true))
@@ -767,6 +812,7 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
         .column(egui_extras::Column::remainder())
         .header(22.0, |mut h| {
             for t in [
+                "",
                 "Twitch",
                 "EVE-Charakter",
                 "EVE-ID",
@@ -779,7 +825,7 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
             }
         })
         .body(|body| {
-            body.rows(22.0, rows.len(), |mut row| {
+            body.rows(38.0, rows.len(), |mut row| {
                 let i = row.index();
                 let u = &rows[i];
                 row.set_selected(st.selected == Some(i));
@@ -788,6 +834,11 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
                         .filter(|s| !s.is_empty())
                         .unwrap_or_else(|| "—".into())
                 };
+                row.col(|ui| {
+                    if let Some(id) = u.eve_character_id {
+                        portrait(ui, id, 34.0);
+                    }
+                });
                 row.col(|ui| {
                     ui.label(&u.twitch_login);
                 });
@@ -821,6 +872,23 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
                 }
             });
         });
+}
+
+/// EVE-Porträt in passender Auflösung; bis zum Laden ein Platzhalter.
+fn portrait(ui: &mut egui::Ui, id: i64, px: f32) {
+    let size = if px <= 64.0 {
+        64
+    } else if px <= 128.0 {
+        128
+    } else {
+        256
+    };
+    ui.add(
+        egui::Image::new(crate::engine::portrait_url(id, size))
+            .fit_to_exact_size(egui::vec2(px, px))
+            .corner_radius(2.0)
+            .show_loading_spinner(false),
+    );
 }
 
 fn history_tab(ui: &mut egui::Ui, st: &mut Settings) {

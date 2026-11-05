@@ -4,7 +4,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.1**
+Aktuelle Version: **0.0.2**
 
 ## Funktionen
 
@@ -26,7 +26,9 @@ Aktuelle Version: **0.0.1**
 - **EVE-Online-Modus (optional):**
   - `!eve Charaktername` verknüpft einen Twitch-Account mit einem EVE-Charakter (Prüfung über ESI)
   - Import über eve2twitch-API und Eve2Twitch-Bot-Nachrichten
-  - EVE-Namen erscheinen nie im Overlay, sondern als `[EVE-NAME]`
+  - Gewinnt ein registrierter Spieler, zeigt das Overlay sein EVE-Porträt mit Charaktername sowie Corp- und Allianz-Ticker; das Programmfenster zeigt das Porträt beim Gewinner und in der Datenbank
+  - Fehlende Charakter-IDs (z. B. aus dem Eve2Twitch-Chat) werden automatisch über ESI ergänzt, für ältere Einträge per Knopf „Fehlende IDs ergänzen“
+  - Optional lassen sich EVE-Namen und Porträts im Overlay verbergen (`hide_eve_names`), dann erscheint `[EVE-NAME]`
 - **Datenbank:** Zuordnungen anlegen, bearbeiten, löschen und als CSV exportieren; Verlauf aller Gewinner.
 
 ## Installation (Windows)
@@ -60,6 +62,7 @@ Das Feld **RUN (s)** legt fest, wie lange der Run im Overlay dauert (mindestens 
 | `timer_duration` | Standard-Giveaway-Dauer |
 | `hack_duration` | Dauer des Matrix-Runs in Sekunden *(neu)* |
 | `decker_name` | Name des Deckers im Overlay, leer = Kanalname *(neu)* |
+| `hide_eve_names` | EVE-Namen und Porträts im Overlay verbergen (Standard: `false`) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`) |
 | `sound` | Soundeffekte im Programm |
 | `eve_enabled`, `eve_command`, `eve_api_url`, `eve_api_key`, `eve2twitch_bot_name` | EVE-Modus |
@@ -95,4 +98,5 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.2 | EVE-Porträt mit Charaktername und Tickern im Gewinner-Banner und im Programmfenster; Charakter-IDs werden über ESI ergänzt; Namensschutz im Overlay als Schalter |
 | 0.0.1 | Erste Rust-Version: Matrix-Run im Shadowrun-Stil, neues Overlay, Verlauf-Tab, einstellbare Run-Dauer und Decker-Name |

@@ -129,6 +129,14 @@ canvas{width:100%;height:100%;display:block}
 .winner strong{display:block;font-size:clamp(36px,6vw,92px);line-height:1.05;margin-top:6px;overflow-wrap:anywhere;color:var(--text)}
 .winner p{margin:10px 0 0;color:var(--muted);font-size:15px}
 .winner.show{animation:drop .6s cubic-bezier(.2,1.4,.4,1)}
+.winner.has-pic{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:32px;text-align:left}
+.portrait{margin:0;width:clamp(150px,14vw,240px);aspect-ratio:1;border:2px solid var(--gold);position:relative;background:var(--ink2)}
+.portrait img{display:block;width:100%;height:100%;object-fit:cover}
+.portrait::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(14,11,38,.18) 0 2px,transparent 2px 4px)}
+.weve{margin-top:8px;font-size:clamp(18px,1.8vw,28px);color:var(--decker);font-weight:600}
+.weve span{color:var(--muted);font-weight:500;margin-left:10px}
+.winner.has-pic strong{font-size:clamp(32px,4.6vw,76px)}
 @keyframes drop{from{transform:translate(-50%,-60%) scale(.9);opacity:0}}
 
 .idle{position:fixed;left:14px;bottom:12px;color:var(--muted);font-size:12px}
@@ -185,9 +193,13 @@ body[data-view="log"] .left{display:none}
   </section>
 
   <div id="winner" class="winner" hidden>
-    <small>Paydata extrahiert – der Gewinner ist</small>
-    <strong id="wname"></strong>
-    <p id="wnote"></p>
+    <figure id="wpic" class="portrait" hidden><img id="wimg" alt=""></figure>
+    <div class="wtext">
+      <small>Paydata extrahiert – der Gewinner ist</small>
+      <strong id="wname"></strong>
+      <div id="weve" class="weve" hidden></div>
+      <p id="wnote"></p>
+    </div>
   </div>
 </main>
 <div id="idle" class="idle">Overlay verbunden – wartet auf das Giveaway</div>
@@ -345,10 +357,20 @@ function apply(st){
   const wn=st.mode==='winner'&&st.winner;
   $('winner').hidden=!wn;
   if(wn){$('wname').textContent='@'+st.winner;
+    const ev=st.winner_eve;
+    $('weve').hidden=!ev;
+    if(ev){const tick=[ev.corp?`[${ev.corp}]`:'',ev.alliance?`<${ev.alliance}>`:''].filter(Boolean).join(' ');
+      $('weve').innerHTML=`${esc(ev.name)}${tick?`<span>${esc(tick)}</span>`:''}`;}
+    const pic=ev&&ev.portrait;
+    if(pic&&$('wimg').getAttribute('src')!==pic){$('wimg').src=pic;}
+    $('wpic').hidden=!pic;$('winner').classList.toggle('has-pic',!!pic);
     $('wnote').textContent=st.run&&st.run.converged?'GOD-Konvergenz – aber die Datei war schon raus.':`${st.count} Personas im Register · Overwatch ${st.run?st.run.os:0}/40`;
     if(lastWinner!==st.winner){lastWinner=st.winner;$('winner').classList.remove('show');void $('winner').offsetWidth;$('winner').classList.add('show');}
   }else lastWinner='';
 }
+
+// Porträt nicht ladbar (offline, unbekannte ID) → Banner ohne Bild
+$('wimg').addEventListener('error',()=>{$('wpic').hidden=true;$('winner').classList.remove('has-pic');});
 
 // ---------- Live / Demo ----------
 let retry=500;

@@ -7,6 +7,7 @@
   "timer_duration": "5:00",
   "hack_duration": 30.0,
   "decker_name": "",
+  "hide_eve_names": false,
   "win_message": "🎉 BREACH ERFOLGREICH! Gewinner: @{winner} - herzlichen Glückwunsch!",
   "open_message": "🔓 Giveaway geöffnet! Schreibe {keyword}, um teilzunehmen.",
   "close_message": "🔒 Giveaway geschlossen.",
