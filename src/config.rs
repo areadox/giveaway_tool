@@ -30,6 +30,13 @@ pub struct Config {
     pub decker_name: String,
     /// EVE-Charakternamen im Overlay durch „[EVE-NAME]“ ersetzen und keine Porträts zeigen.
     pub hide_eve_names: bool,
+    /// Auto-Giveaway: öffnet nach `auto_interval` selbst ein Giveaway und
+    /// beginnt nach dem Abschluss von vorn.
+    pub auto_enabled: bool,
+    /// Pause bis zum nächsten Giveaway (mm:ss oder Minuten).
+    pub auto_interval: String,
+    /// Wie lange der Gewinner im Auto-Modus stehen bleibt (Sekunden).
+    pub auto_winner_hold: f64,
     /// Unbekannte Schlüssel bleiben beim Speichern erhalten.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -56,6 +63,9 @@ impl Default for Config {
             eve2twitch_bot_name: String::new(),
             hack_duration: 30.0,
             hide_eve_names: false,
+            auto_enabled: false,
+            auto_interval: "30:00".into(),
+            auto_winner_hold: 20.0,
             decker_name: String::new(),
             extra: Map::new(),
         }

@@ -257,6 +257,9 @@ impl eframe::App for GuiApp {
                     ui.label(
                         RichText::new(format!("TEILNEHMER: {}", e.participants.len())).color(GREEN),
                     );
+                    if let Some(t) = e.auto_text() {
+                        ui.label(RichText::new(format!("AUTO-GIVEAWAY: {t}")).color(CYAN));
+                    }
                     if let Some(rv) = e.run_view.as_ref().filter(|_| e.phase == Phase::Running) {
                         ui.label(
                             RichText::new(format!(
@@ -336,6 +339,12 @@ impl eframe::App for GuiApp {
                             ui.label(RichText::new("| DEMO:").color(CYAN).size(11.0));
                             let demo = format!("{}/test", e.overlay_url);
                             ui.hyperlink_to(RichText::new(&demo).size(11.0), &demo);
+                            ui.label(RichText::new("| TIMER:").color(CYAN).size(11.0));
+                            let timer = format!("{}/timer", e.overlay_url);
+                            ui.hyperlink_to(RichText::new(&timer).size(11.0), &timer)
+                                .on_hover_text(
+                                "Kleine Anzeige für OBS (z. B. 520 × 110); Vorschau mit ?demo=1",
+                            );
                         });
                     }
                 });
@@ -660,7 +669,16 @@ fn general_tab(ui: &mut egui::Ui, st: &mut Settings) {
             ui.label(RichText::new("Sound").color(CYAN));
             ui.checkbox(&mut d.sound, "Soundeffekte im Programm");
             ui.end_row();
+            ui.label(RichText::new("Auto-Giveaway").color(CYAN));
+            ui.checkbox(&mut d.auto_enabled, "an – öffnet Giveaways selbst und beginnt danach von vorn");
+            ui.end_row();
+            field(ui, "Pause bis zum nächsten Giveaway", &mut d.auto_interval, false, "mm:ss oder Minuten, z. B. 30:00");
+            ui.label(RichText::new("Gewinner-Anzeige im Auto-Modus").color(CYAN));
+            ui.add(egui::DragValue::new(&mut d.auto_winner_hold).range(3.0..=3600.0).speed(1.0).suffix(" s"));
+            ui.end_row();
         });
+        ui.add_space(6.0);
+        ui.label(RichText::new("Im Auto-Modus gilt die Giveaway-Dauer von oben (muss größer als 0 sein). Die Timer-Anzeige für OBS liegt unter /timer.").color(DIM).size(11.0));
         ui.add_space(10.0);
         ui.label(RichText::new("Das OAuth-Token wird im Klartext in config.json neben der .exe gespeichert – die Datei nicht weitergeben.").color(DIM).size(11.0));
     });

@@ -129,6 +129,17 @@ struct OverlayState<'a> {
     winner: &'a str,
     winner_eve: Option<&'a EveCard>,
     status: &'a str,
+    auto: AutoState,
+}
+
+/// Stand des Auto-Timers für das Overlay und die Timer-Anzeige.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct AutoState {
+    pub enabled: bool,
+    /// "wartet" (Countdown bis zum nächsten Giveaway) | "giveaway" | "aus"
+    pub state: &'static str,
+    pub remaining: f64,
+    pub total: u64,
 }
 
 pub struct Engine {
@@ -153,6 +164,10 @@ pub struct Engine {
     timer_total: u64,
     run: Option<ActiveRun>,
     win_sound_at: Option<Instant>,
+    auto_deadline: Option<Instant>,
+    auto_total: u64,
+    won_at: Option<Instant>,
+    auto_last_sec: u64,
     tx: Sender<Inbound>,
     rx: Receiver<Inbound>,
     reader: TwitchReader,
@@ -203,6 +218,10 @@ impl Engine {
             timer_total: 0,
             run: None,
             win_sound_at: None,
+            auto_deadline: None,
+            auto_total: 0,
+            won_at: None,
+            auto_last_sec: u64::MAX,
             tx,
             rx,
             reader,
@@ -483,6 +502,7 @@ impl Engine {
             Tone::Yellow,
         );
         self.win_sound_at = Some(Instant::now() + Duration::from_millis(380));
+        self.won_at = Some(Instant::now());
         if let Err(e) = self.db.add_history(&display, self.participants.len()) {
             self.log(
                 format!("Verlauf konnte nicht gespeichert werden: {e}"),
@@ -506,6 +526,8 @@ impl Engine {
         self.run = None;
         self.run_view = None;
         self.win_sound_at = None;
+        self.won_at = None;
+        self.auto_deadline = None;
         self.log.clear();
         self.set_status("BEREIT / TEILNAHME GESCHLOSSEN", Tone::Cyan);
         self.log(
@@ -963,6 +985,7 @@ impl Engine {
                 self.winner_eve.as_ref()
             },
             status: &self.status,
+            auto: self.auto_state(),
         };
         let mut v = serde_json::to_value(&st).unwrap_or(Value::Null);
         if self.cfg.hide_eve_names {
@@ -972,9 +995,9 @@ impl Engine {
     }
 
     fn publish(&mut self) {
-        let due = self.phase == Phase::Open
-            && self.timer.is_some()
-            && self.last_publish.elapsed() >= Duration::from_millis(500);
+        let counting =
+            (self.phase == Phase::Open && self.timer.is_some()) || self.auto_deadline.is_some();
+        let due = counting && self.last_publish.elapsed() >= Duration::from_millis(500);
         if !(self.dirty || due) {
             return;
         }
@@ -989,7 +1012,22 @@ impl Engine {
     // ------------------------------------------------------------ Konfiguration
 
     pub fn apply_config(&mut self, new: Config) -> Result<(), String> {
-        config::parse_duration(&new.timer_duration)?;
+        let giveaway = config::parse_duration(&new.timer_duration)?;
+        if new.auto_enabled {
+            let pause = config::parse_duration(&new.auto_interval)
+                .map_err(|e| format!("Auto-Giveaway-Pause: {e}"))?;
+            if pause == 0 {
+                return Err("Auto-Giveaway: Pause muss größer als 0 sein".into());
+            }
+            if giveaway == 0 {
+                return Err(
+                    "Auto-Giveaway braucht eine Giveaway-Dauer größer als 0 (sonst endet es nie)"
+                        .into(),
+                );
+            }
+        }
+        let auto_changed = new.auto_enabled != self.cfg.auto_enabled
+            || new.auto_interval != self.cfg.auto_interval;
         if new.web_port == 0 {
             return Err("Port muss 1–65535 sein".into());
         }
@@ -1027,6 +1065,20 @@ impl Engine {
             }
             self.start_overlay();
         }
+        if auto_changed {
+            self.auto_deadline = None;
+            if self.cfg.auto_enabled {
+                self.log(
+                    format!(
+                        "Auto-Giveaway aktiv: alle {} ein neues Giveaway.",
+                        self.cfg.auto_interval.trim()
+                    ),
+                    Tone::Cyan,
+                );
+            } else {
+                self.log("Auto-Giveaway ausgeschaltet.", Tone::Yellow);
+            }
+        }
         self.log("Konfiguration gespeichert und übernommen.", Tone::Green);
         self.dirty = true;
         Ok(())
@@ -1036,6 +1088,7 @@ impl Engine {
         self.drain_inbox();
         self.tick_timer();
         self.tick_run();
+        self.tick_auto();
         if let Some(at) = self.win_sound_at {
             if Instant::now() >= at {
                 self.win_sound_at = None;
@@ -1045,6 +1098,113 @@ impl Engine {
             }
         }
         self.publish();
+    }
+
+    // ------------------------------------------------------------ Auto-Giveaway
+
+    pub fn auto_state(&self) -> AutoState {
+        if !self.cfg.auto_enabled {
+            return AutoState {
+                enabled: false,
+                state: "aus",
+                remaining: 0.0,
+                total: 0,
+            };
+        }
+        match self.auto_deadline {
+            Some(d) => AutoState {
+                enabled: true,
+                state: "wartet",
+                remaining: d.saturating_duration_since(Instant::now()).as_secs_f64(),
+                total: self.auto_total,
+            },
+            None => AutoState {
+                enabled: true,
+                state: "giveaway",
+                remaining: 0.0,
+                total: self.auto_total,
+            },
+        }
+    }
+
+    /// Text für das Programmfenster, z. B. „nächstes Giveaway in 12:34“.
+    pub fn auto_text(&self) -> Option<String> {
+        let a = self.auto_state();
+        match a.state {
+            "aus" => None,
+            "wartet" => Some(format!(
+                "nächstes Giveaway in {}",
+                config::format_clock(a.remaining)
+            )),
+            _ => Some("Giveaway läuft – danach beginnt der Countdown neu".into()),
+        }
+    }
+
+    fn tick_auto(&mut self) {
+        if !self.cfg.auto_enabled {
+            if self.auto_deadline.take().is_some() {
+                self.dirty = true;
+            }
+            return;
+        }
+        match self.phase {
+            Phase::Open | Phase::Running => {
+                if self.auto_deadline.take().is_some() {
+                    self.dirty = true;
+                }
+            }
+            Phase::Won => {
+                // Gewinner eine Weile stehen lassen, dann leise zurück auf „bereit“
+                let hold = Duration::from_secs_f64(self.cfg.auto_winner_hold.clamp(3.0, 3600.0));
+                if self.won_at.is_some_and(|t| t.elapsed() >= hold) {
+                    self.won_at = None;
+                    self.phase = Phase::Ready;
+                    self.participants.clear();
+                    self.participant_set.clear();
+                    self.winner.clear();
+                    self.winner_display.clear();
+                    self.winner_eve = None;
+                    self.run_view = None;
+                    self.set_status("AUTO-GIVEAWAY: WARTET", Tone::Cyan);
+                }
+            }
+            Phase::Ready => match self.auto_deadline {
+                None => {
+                    let secs = config::parse_duration(&self.cfg.auto_interval)
+                        .unwrap_or(1800)
+                        .max(1);
+                    self.auto_total = secs;
+                    self.auto_deadline = Some(Instant::now() + Duration::from_secs(secs));
+                    self.log(
+                        format!(
+                            "Auto-Giveaway: nächstes Giveaway in {}.",
+                            config::format_clock(secs as f64)
+                        ),
+                        Tone::Cyan,
+                    );
+                    self.dirty = true;
+                    self.request_repaint();
+                }
+                Some(d) if Instant::now() >= d => {
+                    self.auto_deadline = None;
+                    let duration = match config::parse_duration(&self.cfg.timer_duration) {
+                        Ok(s) if s > 0 => self.cfg.timer_duration.clone(),
+                        _ => "5:00".to_string(),
+                    };
+                    let kw = self.active_keyword.clone();
+                    self.log("Auto-Giveaway startet.", Tone::Green);
+                    self.toggle_entries(&kw, &duration);
+                }
+                Some(d) => {
+                    // Anzeige im Programmfenster einmal pro Sekunde aktualisieren
+                    let sec = d.saturating_duration_since(Instant::now()).as_secs();
+                    if sec != self.auto_last_sec {
+                        self.auto_last_sec = sec;
+                        self.request_repaint();
+                    }
+                }
+            },
+        }
     }
 
     pub fn shutdown(&mut self) {
@@ -1211,6 +1371,90 @@ mod tests {
         let hidden = e.overlay_json();
         assert!(!hidden.contains("portrait"));
         assert!(!hidden.to_lowercase().contains("daulin"));
+        e.shutdown();
+    }
+
+    #[test]
+    fn auto_giveaway_cycle() {
+        let dir = std::env::temp_dir().join(format!("cg-auto-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        let cfg = Config {
+            web_port: 18966,
+            sound: false,
+            keyword: "!hack".into(),
+            hack_duration: 8.0,
+            timer_duration: "0:02".into(),
+            auto_enabled: true,
+            auto_interval: "0:01".into(),
+            auto_winner_hold: 3.0,
+            ..Default::default()
+        };
+        let mut e = Engine::new(cfg, db);
+        let run_until = |e: &mut Engine, secs: u64, cond: &dyn Fn(&Engine) -> bool| {
+            let start = Instant::now();
+            while !cond(e) && start.elapsed() < Duration::from_secs(secs) {
+                e.tick();
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            assert!(cond(e), "Bedingung nicht erreicht");
+        };
+        e.tick();
+        assert_eq!(e.auto_state().state, "wartet");
+        assert!(e.overlay_json().contains("\"state\":\"wartet\""));
+        // Countdown läuft ab → Giveaway öffnet sich selbst
+        run_until(&mut e, 5, &|e| e.phase == Phase::Open);
+        assert_eq!(e.auto_state().state, "giveaway");
+        e.tx.send(Inbound::Chat {
+            user: "alice".into(),
+            msg: "!hack".into(),
+        })
+        .unwrap();
+        // Giveaway-Countdown endet → Run → Gewinner
+        run_until(&mut e, 20, &|e| e.phase == Phase::Won);
+        assert_eq!(e.winner, "alice");
+        // nach der Gewinner-Anzeige beginnt der Countdown von vorn
+        run_until(&mut e, 8, &|e| {
+            e.phase == Phase::Ready && e.auto_state().state == "wartet"
+        });
+        assert!(e.participants.is_empty() && e.winner.is_empty());
+        // Ohne Teilnehmer endet das Giveaway und der Kreislauf geht weiter
+        run_until(&mut e, 5, &|e| e.phase == Phase::Open);
+        run_until(&mut e, 5, &|e| e.phase == Phase::Ready);
+        run_until(&mut e, 3, &|e| e.auto_state().state == "wartet");
+        // Ausschalten stoppt den Kreislauf
+        e.cfg.auto_enabled = false;
+        e.tick();
+        assert_eq!(e.auto_state().state, "aus");
+        assert!(e.auto_text().is_none());
+        e.shutdown();
+    }
+
+    #[test]
+    fn auto_config_validation() {
+        let dir = std::env::temp_dir().join(format!("cg-autov-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        let mut e = Engine::new(
+            Config {
+                web_port: 19066,
+                sound: false,
+                ..Default::default()
+            },
+            db,
+        );
+        let bad = Config {
+            auto_enabled: true,
+            timer_duration: "0".into(),
+            ..e.cfg.clone()
+        };
+        assert!(e.apply_config(bad).is_err());
+        let bad = Config {
+            auto_enabled: true,
+            auto_interval: "0".into(),
+            ..e.cfg.clone()
+        };
+        assert!(e.apply_config(bad).is_err());
         e.shutdown();
     }
 

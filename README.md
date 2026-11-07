@@ -4,12 +4,13 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.2**
+Aktuelle Version: **0.0.3**
 
 ## Funktionen
 
 - **Teilnahme per Chat:** Keyword (z. B. `!hack`) während der offenen Phase. Bots (StreamElements, Moobot, Nightbot) werden ignoriert, doppelte Teilnahmen zählen nicht.
 - **Countdown:** als `mm:ss` oder in Minuten (`0` = manuelles Ende), mit Chat-Warnungen bei 60 und 10 Sekunden. Läuft er ab, startet der Run automatisch.
+- **Auto-Giveaway (abschaltbar):** Nach einer einstellbaren Pause öffnet das Tool selbst ein Giveaway. Ist es abgeschlossen, bleibt der Gewinner eine Weile stehen, dann beginnt der Countdown von vorn. Gibt es keine Teilnehmer, geht der Kreislauf einfach weiter. Ein manueller START zwischendurch ist jederzeit möglich.
 - **Matrix-Run (Shadowrun-Stil):**
   - W6-Würfelpools, Erfolg bei 5 oder 6, Patzer und kritische Patzer, Limits
   - Matrixwahrnehmung, Eiliges Hacken oder Brute Force für 3 Marken
@@ -21,6 +22,7 @@ Aktuelle Version: **0.0.2**
 - **OBS-Overlay** (Browserquelle, transparent):
   - `http://localhost:8766` live
   - `http://localhost:8766/test` Demo-Schleife zum Einrichten
+  - `http://localhost:8766/timer` kleine Timer-Anzeige (z. B. 520 × 110): Countdown bis zum nächsten Giveaway, offene Teilnahme mit Keyword, laufender Run, Gewinner; Vorschau mit `/timer?demo=1`. Bei ausgeschaltetem Auto-Giveaway ist sie nur während eines Giveaways sichtbar.
   - `?view=graph` nur Host und Würfel, `?view=log` nur Charakterbogen und Protokoll, `?hide=1` blendet den Verbindungshinweis aus
 - **Chat-Bot:** Start-, End- und Gewinnernachricht über einen Bot-Account (OAuth-Token).
 - **EVE-Online-Modus (optional):**
@@ -63,6 +65,9 @@ Das Feld **RUN (s)** legt fest, wie lange der Run im Overlay dauert (mindestens 
 | `hack_duration` | Dauer des Matrix-Runs in Sekunden *(neu)* |
 | `decker_name` | Name des Deckers im Overlay, leer = Kanalname *(neu)* |
 | `hide_eve_names` | EVE-Namen und Porträts im Overlay verbergen (Standard: `false`) |
+| `auto_enabled` | Auto-Giveaway an/aus (Standard: `false`) |
+| `auto_interval` | Pause bis zum nächsten Giveaway, `mm:ss` oder Minuten (Standard: `30:00`) |
+| `auto_winner_hold` | Sekunden, die der Gewinner im Auto-Modus stehen bleibt (Standard: 20) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`) |
 | `sound` | Soundeffekte im Programm |
 | `eve_enabled`, `eve_command`, `eve_api_url`, `eve_api_key`, `eve2twitch_bot_name` | EVE-Modus |
@@ -98,5 +103,6 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.3 | Auto-Giveaway mit einstellbarer Pause (in den Einstellungen ein- und ausschaltbar) und eigene Timer-Anzeige für OBS unter `/timer` |
 | 0.0.2 | EVE-Porträt mit Charaktername und Tickern im Gewinner-Banner und im Programmfenster; Charakter-IDs werden über ESI ergänzt; Namensschutz im Overlay als Schalter |
 | 0.0.1 | Erste Rust-Version: Matrix-Run im Shadowrun-Stil, neues Overlay, Verlauf-Tab, einstellbare Run-Dauer und Decker-Name |

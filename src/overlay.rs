@@ -12,6 +12,7 @@ use std::time::Duration;
 use tokio::sync::{oneshot, watch};
 
 pub const OVERLAY_HTML: &str = include_str!("../assets/overlay.html");
+pub const TIMER_HTML: &str = include_str!("../assets/timer.html");
 
 #[derive(Clone)]
 struct AppState {
@@ -70,6 +71,7 @@ impl OverlayServer {
                     let app = Router::new()
                         .route("/", get(index))
                         .route("/test", get(index))
+                        .route("/timer", get(timer))
                         .route("/ws", get(ws_handler))
                         .route("/api/demo", get(demo))
                         .with_state(AppState { rx, decker });
@@ -129,6 +131,10 @@ impl Drop for OverlayServer {
 
 async fn index() -> impl IntoResponse {
     ([("Cache-Control", "no-store")], Html(OVERLAY_HTML))
+}
+
+async fn timer() -> impl IntoResponse {
+    ([("Cache-Control", "no-store")], Html(TIMER_HTML))
 }
 
 async fn demo(State(st): State<AppState>) -> impl IntoResponse {
