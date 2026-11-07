@@ -12,7 +12,7 @@ use crate::overlay::OverlayServer;
 use crate::sound::{self, Sfx};
 use crate::twitch::{TwitchReader, TwitchSender};
 use rand::seq::SliceRandom;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -33,6 +33,8 @@ pub enum Tone {
 
 #[derive(Debug)]
 pub enum Inbound {
+    /// Befehl aus dem OBS-Bedien-Dock.
+    Dock(DockCmd),
     Chat {
         user: String,
         msg: String,
@@ -53,6 +55,44 @@ pub enum Inbound {
         info: Option<esi::EveInfo>,
         error: Option<String>,
     },
+}
+
+/// Befehle des OBS-Bedien-Docks (`POST /api/dock`).
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(tag = "cmd", rename_all = "lowercase")]
+pub enum DockCmd {
+    /// START bzw. STOP & AUSLOSEN
+    Toggle {
+        keyword: String,
+        duration: String,
+    },
+    Breach {
+        keyword: String,
+        hack: String,
+    },
+    Reset,
+    /// Auto-Giveaway ein-/ausschalten (wird in config.json gespeichert)
+    Auto {
+        enabled: bool,
+    },
+}
+
+#[derive(Serialize)]
+struct DockLine<'a> {
+    stamp: &'a str,
+    text: &'a str,
+    tone: &'static str,
+}
+
+fn tone_name(t: Tone) -> &'static str {
+    match t {
+        Tone::Green => "green",
+        Tone::Red => "red",
+        Tone::Cyan => "cyan",
+        Tone::Yellow => "yellow",
+        Tone::Magenta => "magenta",
+        Tone::Dark => "dark",
+    }
 }
 
 /// EVE-Daten eines Spielers für Overlay und Programmfenster.
@@ -256,7 +296,13 @@ impl Engine {
 
     fn start_overlay(&mut self) {
         let initial = self.overlay_json();
-        let srv = OverlayServer::start(self.cfg.web_port, initial, self.cfg.decker());
+        let srv = OverlayServer::start(
+            self.cfg.web_port,
+            initial,
+            self.dock_json(),
+            self.cfg.decker(),
+            self.tx.clone(),
+        );
         match (&srv.port, &srv.error) {
             (Some(p), _) => {
                 self.overlay_url = format!("http://localhost:{p}");
@@ -289,6 +335,7 @@ impl Engine {
         while self.log.len() > 500 {
             self.log.pop_front();
         }
+        self.dirty = true;
         self.request_repaint();
     }
 
@@ -893,6 +940,7 @@ impl Engine {
             match item {
                 Inbound::Chat { user, msg } => self.handle_chat(user, msg),
                 Inbound::Log(t, tone) => self.log(t, tone),
+                Inbound::Dock(cmd) => self.handle_dock(cmd),
                 Inbound::JoinReady { login, ign } => {
                     if let Some(i) = ign {
                         self.eve_cache.insert(login.clone(), i);
@@ -1004,9 +1052,90 @@ impl Engine {
         self.dirty = false;
         self.last_publish = Instant::now();
         let json = self.overlay_json();
+        let dock = self.dock_json();
         if let Some(o) = &self.overlay {
             o.publish(json);
+            o.publish_dock(dock);
         }
+    }
+
+    // ------------------------------------------------------------ OBS-Dock
+
+    fn handle_dock(&mut self, cmd: DockCmd) {
+        match cmd {
+            DockCmd::Toggle { keyword, duration } => {
+                self.log("Dock: START/STOP", Tone::Dark);
+                self.toggle_entries(&keyword, &duration);
+            }
+            DockCmd::Breach { keyword, hack } => {
+                self.log("Dock: BREACH", Tone::Dark);
+                self.start_breach(&keyword, &hack);
+            }
+            DockCmd::Reset => self.reset(),
+            DockCmd::Auto { enabled } => {
+                let mut c = self.cfg.clone();
+                c.auto_enabled = enabled;
+                if let Err(e) = self.apply_config(c) {
+                    self.log(format!("Auto-Giveaway nicht umgeschaltet: {e}"), Tone::Red);
+                }
+            }
+        }
+    }
+
+    /// Statusdaten für das Bedien-Dock (enthält im Gegensatz zum Overlay
+    /// auch Log, Einstellungen und EVE-Daten – nur lokal abrufbar).
+    pub fn dock_json(&self) -> String {
+        let phase = match self.phase {
+            Phase::Ready => "ready",
+            Phase::Open => "open",
+            Phase::Running => "run",
+            Phase::Won => "winner",
+        };
+        let log: Vec<DockLine> = self
+            .log
+            .iter()
+            .rev()
+            .take(14)
+            .rev()
+            .map(|l| DockLine {
+                stamp: &l.stamp,
+                text: &l.text,
+                tone: tone_name(l.tone),
+            })
+            .collect();
+        let recent: Vec<&str> = self
+            .participants
+            .iter()
+            .rev()
+            .take(8)
+            .map(String::as_str)
+            .collect();
+        let run = self.run_view.as_ref().filter(|_| self.phase == Phase::Running).map(|r| {
+            serde_json::json!({ "phase": r.phase_text, "os": r.os, "os_max": r.os_max, "marks": r.marks, "overall": r.overall })
+        });
+        serde_json::json!({
+            "phase": phase,
+            "status": self.status,
+            "status_tone": tone_name(self.status_tone),
+            "countdown": self.countdown_text,
+            "countdown_tone": tone_name(self.countdown_tone),
+            "timer_remaining": if self.phase == Phase::Open { self.timer_remaining() } else { 0.0 },
+            "timer_active": self.phase == Phase::Open && self.timer.is_some(),
+            "count": self.participants.len(),
+            "recent": recent,
+            "keyword": self.active_keyword,
+            "duration": self.cfg.timer_duration,
+            "hack": self.cfg.hack_duration,
+            "winner": self.winner,
+            "winner_display": self.winner_display,
+            "winner_eve": self.winner_eve,
+            "auto": self.auto_state(),
+            "auto_interval": self.cfg.auto_interval,
+            "run": run,
+            "log": log,
+            "overlay_url": self.overlay_url,
+        })
+        .to_string()
     }
 
     // ------------------------------------------------------------ Konfiguration
@@ -1175,6 +1304,7 @@ impl Engine {
                         .max(1);
                     self.auto_total = secs;
                     self.auto_deadline = Some(Instant::now() + Duration::from_secs(secs));
+                    self.set_status("AUTO-GIVEAWAY: WARTET", Tone::Cyan);
                     self.log(
                         format!(
                             "Auto-Giveaway: nächstes Giveaway in {}.",

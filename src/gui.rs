@@ -345,6 +345,12 @@ impl eframe::App for GuiApp {
                                 .on_hover_text(
                                 "Kleine Anzeige für OBS (z. B. 520 × 110); Vorschau mit ?demo=1",
                             );
+                            ui.label(RichText::new("| DOCK:").color(CYAN).size(11.0));
+                            let dock = format!("{}/dock", e.overlay_url);
+                            ui.hyperlink_to(RichText::new(&dock).size(11.0), &dock)
+                                .on_hover_text(
+                                    "Bedien-Dock für OBS: Docks → Benutzerdefinierte Browser-Docks",
+                                );
                         });
                     }
                 });

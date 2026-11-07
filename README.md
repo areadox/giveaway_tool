@@ -4,7 +4,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.3**
+Aktuelle Version: **0.0.4**
 
 ## Funktionen
 
@@ -22,6 +22,7 @@ Aktuelle Version: **0.0.3**
 - **OBS-Overlay** (Browserquelle, transparent):
   - `http://localhost:8766` live
   - `http://localhost:8766/test` Demo-Schleife zum Einrichten
+  - `http://localhost:8766/dock` Bedien-Dock für OBS (siehe unten)
   - `http://localhost:8766/timer` kleine Timer-Anzeige (z. B. 520 × 110): Countdown bis zum nächsten Giveaway, offene Teilnahme mit Keyword, laufender Run, Gewinner; Vorschau mit `/timer?demo=1`. Bei ausgeschaltetem Auto-Giveaway ist sie nur während eines Giveaways sichtbar.
   - `?view=graph` nur Host und Würfel, `?view=log` nur Charakterbogen und Protokoll, `?hide=1` blendet den Verbindungshinweis aus
 - **Chat-Bot:** Start-, End- und Gewinnernachricht über einen Bot-Account (OAuth-Token).
@@ -52,6 +53,12 @@ Konfiguration und Datenbank liegen immer neben der `.exe`.
 | **RESET** | leert Pool, Protokoll und Overlay |
 
 Das Feld **RUN (s)** legt fest, wie lange der Run im Overlay dauert (mindestens 8 Sekunden, Standard 30).
+
+### Bedien-Dock in OBS
+
+In OBS unter **Docks → Benutzerdefinierte Browser-Docks** einen Namen (z. B. „Giveaway“) und die URL `http://localhost:8766/dock` eintragen. Das Dock zeigt Status, Countdown, Teilnehmer, Gewinner (mit EVE-Porträt) und das Protokoll. Es enthält die Knöpfe START / STOP & AUSLOSEN, BREACH und RESET (RESET verlangt einen zweiten Klick) und den Schalter für das Auto-Giveaway (wird in `config.json` gespeichert). Unter „Giveaway-Werte“ lassen sich Keyword, Dauer und Run-Dauer für den nächsten Start anpassen.
+
+Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). Aufrufe aus dem Netzwerk und von fremden Webseiten werden abgelehnt; das Overlay selbst bleibt im Netzwerk erreichbar.
 
 ## Konfiguration (`config.json`)
 
@@ -103,6 +110,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.4 | Bedien-Dock für OBS unter `/dock` (Steuerung, Status, Auto-Giveaway-Schalter, Protokoll); nur lokal erreichbar |
 | 0.0.3 | Auto-Giveaway mit einstellbarer Pause (in den Einstellungen ein- und ausschaltbar) und eigene Timer-Anzeige für OBS unter `/timer` |
 | 0.0.2 | EVE-Porträt mit Charaktername und Tickern im Gewinner-Banner und im Programmfenster; Charakter-IDs werden über ESI ergänzt; Namensschutz im Overlay als Schalter |
 | 0.0.1 | Erste Rust-Version: Matrix-Run im Shadowrun-Stil, neues Overlay, Verlauf-Tab, einstellbare Run-Dauer und Decker-Name |

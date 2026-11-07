@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matrix-Run Dock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14112e; --panel:#1b1740; --line:#3a3170; --field:#0f0c26;
+  --decker:#2ee6c5; --host:#ff3fa4; --gold:#ffd166; --glitch:#ff5a36; --edge:#a58bff;
+  --text:#e8e3ff; --muted:#9a93c9;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:500 14px/1.35 "Chakra Petch","Bahnschrift","Segoe UI",sans-serif}
+body{padding:10px;display:flex;flex-direction:column;gap:10px;min-width:220px}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--edge);outline-offset:2px}
+
+.conn{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.conn::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--decker)}
+.conn.off::before{background:var(--glitch)}
+.conn.off{color:var(--glitch)}
+
+.status{border:1px solid var(--line);border-left:3px solid var(--tone,var(--decker));background:var(--panel);padding:10px 12px;border-radius:3px}
+.status .label{font-size:13px;color:var(--tone,var(--decker));font-weight:600}
+.big{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:2px}
+.clock{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.clock.urgent{color:var(--host)}
+.count{text-align:right;color:var(--muted);font-size:12px}
+.count b{display:block;color:var(--text);font-size:22px;line-height:1.1}
+.sub{color:var(--muted);font-size:12px;margin-top:4px;min-height:1em}
+.sub kbd{font:inherit;font-weight:700;color:#0e0b26;background:var(--decker);padding:0 5px;border-radius:2px}
+.progress{height:4px;background:#251f52;margin-top:8px;border-radius:2px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--tone,var(--decker));transition:width .4s linear}
+
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.btn{border:1px solid var(--line);background:var(--panel);padding:9px 8px;border-radius:3px;cursor:pointer;font-weight:700;letter-spacing:.02em}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.main{grid-column:1/-1;padding:12px 8px;font-size:16px;background:var(--decker);border-color:var(--decker);color:#0e0b26}
+.btn.main.stop{background:var(--host);border-color:var(--host);color:#fff}
+.btn.breach{color:var(--host)}
+.btn.reset{color:var(--gold)}
+.btn.reset.armed{background:var(--gold);color:#0e0b26;border-color:var(--gold)}
+.feedback{font-size:12px;color:var(--glitch);min-height:0}
+.feedback:empty{display:none}
+
+.winner{display:flex;align-items:center;gap:10px;border:1px solid var(--gold);background:rgba(255,209,102,.07);padding:8px 10px;border-radius:3px}
+.winner img{width:52px;height:52px;object-fit:cover;border:1px solid var(--gold)}
+.winner small{display:block;color:var(--gold);font-size:12px}
+.winner strong{display:block;font-size:18px;overflow-wrap:anywhere}
+.winner span{display:block;color:var(--decker);font-size:13px}
+
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);background:var(--panel);padding:8px 10px;border-radius:3px}
+.row .t{font-weight:600}
+.row .d{font-size:12px;color:var(--muted)}
+.switch{position:relative;width:42px;height:22px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.switch span{position:absolute;inset:0;pointer-events:none;border-radius:11px;background:#251f52;border:1px solid var(--line);transition:background .15s}
+.switch span::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
+.switch input:checked+span{background:rgba(46,230,197,.25);border-color:var(--decker)}
+.switch input:checked+span::after{transform:translateX(20px);background:var(--decker)}
+.switch input:focus-visible+span{outline:2px solid var(--edge);outline-offset:2px}
+
+details{border:1px solid var(--line);border-radius:3px;background:var(--panel)}
+summary{cursor:pointer;padding:8px 10px;font-weight:600}
+.fields{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;padding:0 10px 10px}
+.fields label{font-size:12px;color:var(--muted)}
+.fields input{width:100%;background:var(--field);border:1px solid var(--line);border-radius:2px;padding:5px 7px}
+.fields .hint{grid-column:1/-1;font-size:11px;color:var(--muted)}
+
+.joined{display:flex;flex-wrap:wrap;gap:4px}
+.joined span{font-size:12px;padding:2px 6px;border:1px solid var(--line);border-radius:2px}
+.joined span:first-child{border-color:var(--decker);color:var(--decker)}
+
+.log{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted);max-height:220px;overflow:auto}
+.log p{margin:0}
+.log time{color:#6b62a8;margin-right:6px;font-variant-numeric:tabular-nums}
+.log .green{color:#a6f5e6}.log .red{color:#ffb0d6}.log .yellow{color:var(--gold)}.log .cyan{color:var(--text)}.log .magenta{color:var(--edge)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="conn" class="conn off">Verbinde …</div>
+
+<section id="status" class="status" aria-live="polite">
+  <div id="label" class="label">—</div>
+  <div class="big">
+    <div id="clock" class="clock">—</div>
+    <div class="count"><b id="count">0</b>Teilnehmer</div>
+  </div>
+  <div id="sub" class="sub"></div>
+  <div class="progress"><i id="prog"></i></div>
+</section>
+
+<div class="actions">
+  <button id="toggle" class="btn main" type="button">START</button>
+  <button id="breach" class="btn breach" type="button" title="Matrix-Run sofort starten">BREACH</button>
+  <button id="reset" class="btn reset" type="button">RESET</button>
+</div>
+<div id="feedback" class="feedback" role="alert"></div>
+
+<div id="winner" class="winner" hidden>
+  <img id="wimg" alt="" hidden>
+  <div><small>Gewinner</small><strong id="wname"></strong><span id="weve" hidden></span></div>
+</div>
+
+<div class="row">
+  <div><div class="t">Auto-Giveaway</div><div id="autod" class="d">aus</div></div>
+  <label class="switch" title="Auto-Giveaway ein-/ausschalten"><input id="auto" type="checkbox" aria-label="Auto-Giveaway"><span></span></label>
+</div>
+
+<details>
+  <summary>Giveaway-Werte</summary>
+  <div class="fields">
+    <label for="kw">Keyword</label><input id="kw" autocomplete="off">
+    <label for="dur">Dauer</label><input id="dur" autocomplete="off" placeholder="mm:ss">
+    <label for="hack">Run (s)</label><input id="hack" autocomplete="off" inputmode="decimal">
+    <div class="hint">Gilt für den nächsten Klick auf START oder BREACH. Dauer 0 = Ende per Hand.</div>
+  </div>
+</details>
+
+<div id="joined" class="joined" hidden></div>
+<div id="log" class="log" aria-label="Protokoll"></div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const TONE={green:'var(--decker)',red:'var(--host)',cyan:'var(--decker)',yellow:'var(--gold)',magenta:'var(--edge)',dark:'var(--muted)'};
+const clock=s=>{s=Math.max(0,Math.ceil(s));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;};
+let S=null, online=false, endAt=0, total=0, mode='none', armedUntil=0, filled=false;
+const edited=new Set();
+['kw','dur','hack'].forEach(id=>$(id).addEventListener('input',()=>edited.add(id)));
+
+async function send(body){
+  $('feedback').textContent='';
+  try{
+    const r=await fetch('/api/dock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok)$('feedback').textContent=(await r.text())||`Fehler ${r.status}`;
+  }catch(e){$('feedback').textContent='Giveaway-Tool nicht erreichbar.';}
+}
+const kw=()=>$('kw').value.trim()||(S&&S.keyword)||'!join';
+$('toggle').onclick=()=>send({cmd:'toggle',keyword:kw(),duration:$('dur').value.trim()||(S?S.duration:'5:00')});
+$('breach').onclick=()=>send({cmd:'breach',keyword:kw(),hack:$('hack').value.trim()||String(S?S.hack:30)});
+$('reset').onclick=()=>{
+  // Zweiter Klick innerhalb von 3 s bestätigt – schützt vor Verklicken im Stream
+  if(performance.now()<armedUntil){armedUntil=0;render();send({cmd:'reset'});return;}
+  armedUntil=performance.now()+3000;render();setTimeout(render,3050);
+};
+$('auto').onchange=e=>send({cmd:'auto',enabled:e.target.checked});
+
+function render(){
+  const s=S;
+  $('conn').className='conn'+(online?'':' off');
+  $('conn').textContent=online?'Verbunden mit dem Giveaway-Tool':'Keine Verbindung – läuft das Giveaway-Tool?';
+  for(const id of ['toggle','breach','reset','auto'])$(id).disabled=!online||!s;
+  const armed=performance.now()<armedUntil;
+  $('reset').classList.toggle('armed',armed);$('reset').textContent=armed?'Wirklich?':'RESET';
+  if(!s)return;
+  if(!filled||!edited.has('kw'))$('kw').value=s.keyword;
+  if(!filled||!edited.has('dur'))$('dur').value=s.duration;
+  if(!filled||!edited.has('hack'))$('hack').value=s.hack;
+  filled=true;
+
+  const open=s.phase==='open';
+  $('toggle').textContent=open?'STOP & AUSLOSEN':'START';
+  $('toggle').classList.toggle('stop',open);
+  $('breach').disabled=!online||s.phase==='run'||s.count===0;
+
+  const st=$('status');st.style.setProperty('--tone',TONE[s.status_tone]||'var(--decker)');
+  $('label').textContent=s.status;
+  $('count').textContent=s.count;
+  const a=s.auto||{};
+  $('clock').classList.remove('urgent');
+  if(open&&s.timer_active){mode='open';endAt=performance.now()+s.timer_remaining*1000;total=0;
+    $('sub').innerHTML=`Chat: <kbd>${esc(s.keyword)}</kbd>`;}
+  else if(open){mode='static';$('clock').textContent='Manuell';$('sub').innerHTML=`Chat: <kbd>${esc(s.keyword)}</kbd> · Ende per Hand`;}
+  else if(s.phase==='run'&&s.run){mode='static';$('clock').textContent=`OW ${s.run.os}/${s.run.os_max}`;
+    $('sub').textContent=s.run.phase;$('prog').style.width=`${Math.round(s.run.overall*100)}%`;}
+  else if(s.phase==='winner'){mode='static';$('clock').textContent='Erfolg';$('sub').textContent='';$('prog').style.width='100%';}
+  else if(a.state==='wartet'){mode='auto';endAt=performance.now()+a.remaining*1000;total=a.total;$('sub').textContent='bis zum nächsten Auto-Giveaway';}
+  else{mode='static';$('clock').textContent='—';$('sub').textContent='';$('prog').style.width='0';}
+
+  $('auto').checked=!!a.enabled;
+  $('autod').textContent=!a.enabled?'aus':a.state==='wartet'?`alle ${s.auto_interval} · nächstes in ${clock(a.remaining)}`:`alle ${s.auto_interval} · Giveaway läuft`;
+
+  const w=s.phase==='winner'&&s.winner;
+  $('winner').hidden=!w;
+  if(w){$('wname').textContent='@'+s.winner;const e=s.winner_eve;
+    $('weve').hidden=!e;if(e){$('weve').textContent=[e.name,e.corp?`[${e.corp}]`:'',e.alliance?`<${e.alliance}>`:''].filter(Boolean).join(' ');}
+    const pic=e&&e.id?`https://images.evetech.net/characters/${e.id}/portrait?size=64`:'';
+    if(pic&&$('wimg').getAttribute('src')!==pic)$('wimg').src=pic;$('wimg').hidden=!pic;}
+
+  $('joined').hidden=!(open&&s.recent.length);
+  $('joined').innerHTML=s.recent.map(n=>`<span>${esc(n)}</span>`).join('');
+  const log=$('log');const atEnd=log.scrollTop+log.clientHeight>=log.scrollHeight-4;
+  log.innerHTML=s.log.map(l=>`<p class="${esc(l.tone)}"><time>${esc(l.stamp)}</time>${esc(l.text)}</p>`).join('');
+  if(atEnd)log.scrollTop=log.scrollHeight;
+  tick();
+}
+function tick(){
+  if(mode!=='open'&&mode!=='auto')return;
+  const rem=(endAt-performance.now())/1000;
+  $('clock').textContent=clock(rem);
+  $('clock').classList.toggle('urgent',mode==='open'&&rem<=10);
+  $('prog').style.width=mode==='auto'&&total>0?`${Math.round(100*(1-rem/total))}%`:'0';
+}
+setInterval(tick,250);
+$('wimg').addEventListener('error',()=>{$('wimg').hidden=true;});
+
+let retry=500;
+function connect(){
+  const ws=new WebSocket(`ws://${location.host}/ws/dock`);
+  ws.onopen=()=>{online=true;retry=500;render();};
+  ws.onmessage=e=>{try{S=JSON.parse(e.data);render();}catch(err){console.error(err)}};
+  ws.onclose=()=>{online=false;render();setTimeout(connect,retry);retry=Math.min(8000,retry*1.7);};
+}
+render();connect();
+</script>
+</body>
+</html>

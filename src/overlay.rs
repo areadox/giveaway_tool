@@ -1,22 +1,30 @@
 //! OBS-Overlay: kleiner Webserver (axum) mit WebSocket-Statusstrom.
 //!
-//! Routen: `/` Overlay, `/test` Demo-Modus, `/ws` Live-Status, `/api/demo` Demo-Run.
+//! Routen: `/` Overlay, `/test` Demo-Modus, `/timer` Timer-Anzeige,
+//! `/ws` Live-Status, `/api/demo` Demo-Run, `/dock` Bedien-Dock für OBS
+//! (`/ws/dock`, `POST /api/dock`) – das Dock nur vom selben PC aus.
 
+use crate::engine::{DockCmd, Inbound};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::State;
-use axum::response::{Html, IntoResponse, Json};
+use axum::extract::{ConnectInfo, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::get;
 use axum::Router;
+use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::time::Duration;
 use tokio::sync::{oneshot, watch};
 
 pub const OVERLAY_HTML: &str = include_str!("../assets/overlay.html");
 pub const TIMER_HTML: &str = include_str!("../assets/timer.html");
+pub const DOCK_HTML: &str = include_str!("../assets/dock.html");
 
 #[derive(Clone)]
 struct AppState {
     rx: watch::Receiver<String>,
+    dock_rx: watch::Receiver<String>,
+    cmd: mpsc::Sender<Inbound>,
     decker: String,
 }
 
@@ -24,13 +32,21 @@ pub struct OverlayServer {
     pub port: Option<u16>,
     pub error: Option<String>,
     tx: Option<watch::Sender<String>>,
+    dock_tx: Option<watch::Sender<String>>,
     shutdown: Option<oneshot::Sender<()>>,
     done: Option<mpsc::Receiver<()>>,
 }
 
 impl OverlayServer {
-    pub fn start(requested: u16, initial: String, decker: String) -> Self {
+    pub fn start(
+        requested: u16,
+        initial: String,
+        initial_dock: String,
+        decker: String,
+        cmd: mpsc::Sender<Inbound>,
+    ) -> Self {
         let (tx, rx) = watch::channel(initial);
+        let (dock_tx, dock_rx) = watch::channel(initial_dock);
         let (ready_tx, ready_rx) = mpsc::channel::<Result<u16, String>>();
         let (sd_tx, sd_rx) = oneshot::channel::<()>();
         let (done_tx, done_rx) = mpsc::channel::<()>();
@@ -74,12 +90,23 @@ impl OverlayServer {
                         .route("/timer", get(timer))
                         .route("/ws", get(ws_handler))
                         .route("/api/demo", get(demo))
-                        .with_state(AppState { rx, decker });
-                    let _ = axum::serve(listener, app)
-                        .with_graceful_shutdown(async {
-                            let _ = sd_rx.await;
-                        })
-                        .await;
+                        .route("/dock", get(dock_page))
+                        .route("/ws/dock", get(dock_ws))
+                        .route("/api/dock", axum::routing::post(dock_cmd))
+                        .with_state(AppState {
+                            rx,
+                            dock_rx,
+                            cmd,
+                            decker,
+                        });
+                    let _ = axum::serve(
+                        listener,
+                        app.into_make_service_with_connect_info::<SocketAddr>(),
+                    )
+                    .with_graceful_shutdown(async {
+                        let _ = sd_rx.await;
+                    })
+                    .await;
                 });
                 rt.shutdown_timeout(Duration::from_millis(500));
                 let _ = done_tx.send(());
@@ -96,6 +123,7 @@ impl OverlayServer {
             port,
             error,
             tx: Some(tx),
+            dock_tx: Some(dock_tx),
             shutdown: Some(sd_tx),
             done: Some(done_rx),
         }
@@ -107,10 +135,17 @@ impl OverlayServer {
         }
     }
 
+    pub fn publish_dock(&self, json: String) {
+        if let Some(tx) = &self.dock_tx {
+            tx.send_replace(json);
+        }
+    }
+
     /// Stoppt den Server und wartet kurz, bis der Port frei ist.
     pub fn stop(&mut self) {
         // Sender fallen lassen → alle WebSocket-Schleifen enden
         self.tx = None;
+        self.dock_tx = None;
         if let Some(sd) = self.shutdown.take() {
             let _ = sd.send(());
         }
@@ -123,6 +158,7 @@ impl OverlayServer {
 impl Drop for OverlayServer {
     fn drop(&mut self) {
         self.tx = None;
+        self.dock_tx = None;
         if let Some(sd) = self.shutdown.take() {
             let _ = sd.send(());
         }
@@ -172,6 +208,56 @@ async fn demo(State(st): State<AppState>) -> impl IntoResponse {
         },
     );
     Json(serde_json::json!({ "participants": names, "frames": frames, "winner": winner }))
+}
+
+// ------------------------------------------------------------ Dock
+
+const FORBIDDEN: &str =
+    "Das Bedien-Dock ist nur auf dem PC erreichbar, auf dem das Giveaway-Tool läuft.";
+
+/// Fremde Webseiten dürfen keine Befehle schicken: Origin muss lokal sein.
+fn local_origin(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) else {
+        return true;
+    };
+    let host = origin.split("://").nth(1).unwrap_or("");
+    let host = host.rsplit_once(':').map_or(host, |(h, _)| h);
+    matches!(host, "localhost" | "127.0.0.1" | "[::1]")
+}
+
+async fn dock_page(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> Response {
+    if !addr.ip().is_loopback() {
+        return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
+    }
+    ([("Cache-Control", "no-store")], Html(DOCK_HTML)).into_response()
+}
+
+async fn dock_ws(
+    ws: WebSocketUpgrade,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    State(st): State<AppState>,
+) -> Response {
+    if !addr.ip().is_loopback() || !local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
+    }
+    ws.on_upgrade(move |socket| client(socket, st.dock_rx))
+        .into_response()
+}
+
+async fn dock_cmd(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    State(st): State<AppState>,
+    Json(cmd): Json<DockCmd>,
+) -> Response {
+    if !addr.ip().is_loopback() || !local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
+    }
+    match st.cmd.send(Inbound::Dock(cmd)) {
+        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "Giveaway-Tool beendet").into_response(),
+    }
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(st): State<AppState>) -> impl IntoResponse {
