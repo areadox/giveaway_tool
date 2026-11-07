@@ -3,7 +3,8 @@ name: Build
 # Bei jedem Push auf main wird für Windows und Linux gebaut und getestet.
 # Steht in Cargo.toml eine Version, zu der es noch kein Release gibt,
 # veröffentlicht der Job „release“ automatisch das Release v<Version>
-# mit beiden Programmen. Ein von Hand veröffentlichtes Release bekommt
+# mit beiden Programmen; gibt es das Release schon, werden die Dateien
+# nur ergänzt bzw. aktualisiert. Ein von Hand veröffentlichtes Release bekommt
 # die Pakete ebenfalls angehängt.
 
 on:
@@ -92,7 +93,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if gh release view "v$version" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release v$version gibt es schon – nichts zu tun."
+            echo "Release v$version gibt es schon – Dateien werden nur ergänzt/aktualisiert."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
@@ -108,7 +109,6 @@ jobs:
             echo "**Linux:** \`CyberGiveaway-linux-x64.tar.gz\` oder direkt \`CyberGiveaway-linux-x64\` (nach dem Download \`chmod +x\`)."
           } > notes.md
       - uses: actions/download-artifact@v4
-        if: steps.v.outputs.exists == 'false'
         with:
           path: dist
           merge-multiple: true
@@ -121,6 +121,16 @@ jobs:
           target_commitish: ${{ github.sha }}
           body_path: notes.md
           make_latest: true
+          files: |
+            dist/CyberGiveaway-windows-x64.zip
+            dist/CyberGiveaway-windows-x64.exe
+            dist/CyberGiveaway-linux-x64.tar.gz
+            dist/CyberGiveaway-linux-x64
+      - name: Dateien an bestehendes Release hängen
+        if: steps.v.outputs.exists == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
           files: |
             dist/CyberGiveaway-windows-x64.zip
             dist/CyberGiveaway-windows-x64.exe
