@@ -34,14 +34,23 @@ Aktuelle Version: **0.0.4**
   - Optional lassen sich EVE-Namen und Porträts im Overlay verbergen (`hide_eve_names`), dann erscheint `[EVE-NAME]`
 - **Datenbank:** Zuordnungen anlegen, bearbeiten, löschen und als CSV exportieren; Verlauf aller Gewinner.
 
-## Installation (Windows)
+## Installation
 
-1. Unter [Releases](https://github.com/areadox/giveaway_tool/releases) `CyberGiveaway-windows-x64.zip` herunterladen und in einen eigenen Ordner entpacken.
+Alle Downloads liegen unter [Releases](https://github.com/areadox/giveaway_tool/releases/latest).
+
+**Windows**
+1. `CyberGiveaway-windows-x64.zip` herunterladen und in einen eigenen Ordner entpacken (oder nur `CyberGiveaway-windows-x64.exe` in einen eigenen Ordner legen).
 2. Optional `config.json` und `giveaway.db` der alten Version in denselben Ordner kopieren.
-3. `CyberGiveaway.exe` starten. Beim ersten Start öffnen sich die Einstellungen.
-4. In OBS eine **Browserquelle** mit `http://localhost:8766` anlegen (1920 × 1080).
+3. Die `.exe` starten. Beim ersten Start öffnen sich die Einstellungen.
 
-Konfiguration und Datenbank liegen immer neben der `.exe`.
+**Linux** (x86-64, glibc 2.35 oder neuer, z. B. Ubuntu 22.04+, Debian 12+, Fedora 36+)
+1. `CyberGiveaway-linux-x64.tar.gz` herunterladen und entpacken: `tar xzf CyberGiveaway-linux-x64.tar.gz`
+2. Im Ordner `CyberGiveaway` starten: `./CyberGiveaway` (beim einzelnen Programm `CyberGiveaway-linux-x64` vorher `chmod +x CyberGiveaway-linux-x64`).
+3. Benötigt eine grafische Sitzung (X11 oder Wayland). Ohne Fenster nur den Overlay-Server: `./CyberGiveaway --headless`. Soundeffekte gibt es nur unter Windows.
+
+**OBS:** eine **Browserquelle** mit `http://localhost:8766` anlegen (1920 × 1080).
+
+Konfiguration und Datenbank liegen immer neben dem Programm.
 
 ## Bedienung
 
@@ -88,7 +97,7 @@ cargo build --release      # Ergebnis: target/release/CyberGiveaway(.exe)
 cargo test
 ```
 
-GitHub Actions baut bei jedem Push eine Windows- und eine Linux-Version. Wird auf GitHub ein Release (z. B. `v0.0.1`) veröffentlicht, hängt der Workflow beide Pakete daran an.
+GitHub Actions baut und testet bei jedem Push auf `main` eine Windows- und eine Linux-Version. Steht in `Cargo.toml` eine Version, zu der es noch kein Release gibt, veröffentlicht der Workflow automatisch das Release `v<Version>` mit beiden Programmen; als Release-Text dient die Zeile aus der Versionstabelle unten. Für ein neues Release also die Version in `Cargo.toml` erhöhen und die Tabelle ergänzen.
 
 Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headless`
 

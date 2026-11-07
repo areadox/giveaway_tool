@@ -1,5 +1,11 @@
 name: Build
 
+# Bei jedem Push auf main wird für Windows und Linux gebaut und getestet.
+# Steht in Cargo.toml eine Version, zu der es noch kein Release gibt,
+# veröffentlicht der Job „release“ automatisch das Release v<Version>
+# mit beiden Programmen. Ein von Hand veröffentlichtes Release bekommt
+# die Pakete ebenfalls angehängt.
+
 on:
   push:
     branches: [main]
@@ -28,31 +34,95 @@ jobs:
           Copy-Item config.example.json dist/
           Copy-Item README.md dist/
           Compress-Archive -Path dist/* -DestinationPath CyberGiveaway-windows-x64.zip
+          Copy-Item target/release/CyberGiveaway.exe CyberGiveaway-windows-x64.exe
       - uses: actions/upload-artifact@v4
         with:
           name: CyberGiveaway-windows-x64
-          path: CyberGiveaway-windows-x64.zip
-      - name: Release (nur bei Tag)
+          path: |
+            CyberGiveaway-windows-x64.zip
+            CyberGiveaway-windows-x64.exe
+      - name: An manuell veröffentlichtes Release anhängen
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: CyberGiveaway-windows-x64.zip
+          files: |
+            CyberGiveaway-windows-x64.zip
+            CyberGiveaway-windows-x64.exe
 
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --release
       - run: cargo build --release
-      - run: tar czf CyberGiveaway-linux-x64.tar.gz -C target/release CyberGiveaway -C ../.. config.example.json README.md
+      - name: Paket schnüren
+        run: |
+          mkdir -p dist/CyberGiveaway
+          cp target/release/CyberGiveaway config.example.json README.md dist/CyberGiveaway/
+          tar czf CyberGiveaway-linux-x64.tar.gz -C dist CyberGiveaway
+          cp target/release/CyberGiveaway CyberGiveaway-linux-x64
       - uses: actions/upload-artifact@v4
         with:
           name: CyberGiveaway-linux-x64
-          path: CyberGiveaway-linux-x64.tar.gz
-      - name: Release (nur bei Tag)
+          path: |
+            CyberGiveaway-linux-x64.tar.gz
+            CyberGiveaway-linux-x64
+      - name: An manuell veröffentlichtes Release anhängen
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: CyberGiveaway-linux-x64.tar.gz
+          files: |
+            CyberGiveaway-linux-x64.tar.gz
+            CyberGiveaway-linux-x64
+
+  release:
+    needs: [windows, linux]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version bestimmen
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release v$version gibt es schon – nichts zu tun."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Release-Text aus der Versionstabelle der README
+          notes=$(grep -m1 "^| $version |" README.md | cut -d'|' -f3- | sed 's/|[[:space:]]*$//; s/^[[:space:]]*//')
+          {
+            echo "## Version $version"
+            echo
+            echo "${notes:-Neue Version.}"
+            echo
+            echo "**Windows:** \`CyberGiveaway-windows-x64.zip\` (Programm, Beispiel-Config, README) oder direkt \`CyberGiveaway-windows-x64.exe\`."
+            echo
+            echo "**Linux:** \`CyberGiveaway-linux-x64.tar.gz\` oder direkt \`CyberGiveaway-linux-x64\` (nach dem Download \`chmod +x\`)."
+          } > notes.md
+      - uses: actions/download-artifact@v4
+        if: steps.v.outputs.exists == 'false'
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release veröffentlichen
+        if: steps.v.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: v${{ steps.v.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          body_path: notes.md
+          make_latest: true
+          files: |
+            dist/CyberGiveaway-windows-x64.zip
+            dist/CyberGiveaway-windows-x64.exe
+            dist/CyberGiveaway-linux-x64.tar.gz
+            dist/CyberGiveaway-linux-x64
