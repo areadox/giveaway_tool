@@ -864,6 +864,10 @@ fn general_tab(ui: &mut egui::Ui, st: &mut Settings) {
             ui.label(RichText::new("Sound").color(CYAN));
             ui.checkbox(&mut d.sound, "Soundeffekte im Programm");
             ui.end_row();
+            ui.label(RichText::new("Overlay").color(CYAN));
+            ui.checkbox(&mut d.overlay_show_open, "große Teilnahme-Anzeige zeigen")
+                .on_hover_text("„Host-Zugang offen“ mit Countdown und Teilnehmern. Aus, wenn du die kleine Timer-Anzeige (/timer) nutzt – Matrix-Run und Gewinner erscheinen weiterhin.");
+            ui.end_row();
             ui.label(RichText::new("Programmstart").color(CYAN));
             ui.checkbox(&mut d.start_in_tray, "nur im Tray starten (Linux: minimiert)");
             ui.end_row();

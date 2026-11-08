@@ -4,7 +4,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.8**
+Aktuelle Version: **0.0.9** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
 
 ## Funktionen
 
@@ -27,6 +27,7 @@ Aktuelle Version: **0.0.8**
   - `http://localhost:8766/test` Demo-Schleife zum Einrichten (`/test?winners=3` zeigt mehrere Gewinner mit Beispielpreisen)
   - `http://localhost:8766/dock` Bedien-Dock für OBS (siehe unten)
   - `http://localhost:8766/timer` kleine Timer-Anzeige (z. B. 520 × 110): Countdown bis zum nächsten Giveaway, offene Teilnahme mit Keyword, laufender Run, Gewinner; Vorschau mit `/timer?demo=1`. Bei ausgeschaltetem Auto-Giveaway ist sie nur während eines Giveaways sichtbar.
+  - Wer nur die Timer-Anzeige nutzt, kann die große Teilnahme-Anzeige („Host-Zugang offen“) im Overlay abschalten (`overlay_show_open`, im Programm und im Dock). Matrix-Run und Gewinner erscheinen weiterhin.
   - `?view=graph` nur Host und Würfel, `?view=log` nur Charakterbogen und Protokoll, `?hide=1` blendet den Verbindungshinweis aus
 - **Chat-Bot:** Start-, End- und Gewinnernachricht über einen Bot-Account (OAuth-Token).
 - **EVE-Online-Modus (optional):**
@@ -118,6 +119,7 @@ Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). 
 | `eve_sso_structures` | zusätzlich den Scope für Strukturnamen anfragen (Standard: `false`) |
 | `start_in_tray` | beim Start nur im Tray (Linux: minimiert) (Standard: `true`) |
 | `close_to_tray` | Fenster-X schließt in den Tray, Windows (Standard: `true`) |
+| `overlay_show_open` | große Teilnahme-Anzeige im Overlay zeigen (Standard: `true`) |
 | `eve_sso_refresh_token`, `eve_sso_character_id`, `eve_sso_character_name` | EVE-Anmeldung (wird vom Programm gesetzt) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`, `{prize}`). Fehlt `{prize}`, wird der Preis automatisch angehängt; bei mehreren Gewinnern geht je Gewinner eine Nachricht raus (ab 11 Gewinnern eine Sammelliste). |
 | `sound` | Soundeffekte im Programm |
@@ -132,7 +134,7 @@ cargo build --release      # Ergebnis: target/release/CyberGiveaway(.exe)
 cargo test
 ```
 
-GitHub Actions baut und testet bei jedem Push auf `main` eine Windows- und eine Linux-Version. Steht in `Cargo.toml` eine Version, zu der es noch kein Release gibt, veröffentlicht der Workflow automatisch das Release `v<Version>` mit beiden Programmen; als Release-Text dient die Zeile aus der Versionstabelle unten. Für ein neues Release also die Version in `Cargo.toml` erhöhen und die Tabelle ergänzen.
+GitHub Actions baut und testet bei jedem Push auf `main` eine Windows- und eine Linux-Version, veröffentlicht aber nichts. Ein Release `v<Version aus Cargo.toml>` mit beiden Programmen entsteht nur auf Anforderung: per Commit mit `[release]` in der Nachricht oder über *Actions → Build → Run workflow*. Der Release-Text besteht aus allen Zeilen der Versionstabelle seit dem letzten Release.
 
 Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headless`
 
@@ -157,6 +159,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.9 | Große Teilnahme-Anzeige im Overlay abschaltbar (für die Nutzung mit der Timer-Anzeige); Releases nur noch auf Anforderung |
 | 0.0.8 | Alle Einstellungen und Preise (inkl. EVE-Assets) im OBS-Dock; Start minimiert im Tray mit Tray-Menü, X schließt in den Tray (Windows); Programm-Icon |
 | 0.0.7 | EVE-Anmeldung: ein Rückruf aus einem älteren Anmeldeversuch bricht die laufende Anmeldung nicht mehr ab |
 | 0.0.6 | EVE-Anmeldung fragt standardmäßig nur noch den Asset-Scope an; Strukturnamen optional per Haken; verständliche Meldung bei fehlendem Scope |

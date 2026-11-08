@@ -18,6 +18,7 @@
   "eve_sso_structures": false,
   "start_in_tray": true,
   "close_to_tray": true,
+  "overlay_show_open": true,
   "win_message": "🎉 BREACH ERFOLGREICH! Gewinner: @{winner} - herzlichen Glückwunsch!",
   "open_message": "🔓 Giveaway geöffnet! Schreibe {keyword}, um teilzunehmen.",
   "close_message": "🔒 Giveaway geschlossen.",

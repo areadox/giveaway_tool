@@ -1,11 +1,14 @@
 name: Build
 
-# Bei jedem Push auf main wird für Windows und Linux gebaut und getestet.
-# Steht in Cargo.toml eine Version, zu der es noch kein Release gibt,
-# veröffentlicht der Job „release“ automatisch das Release v<Version>
-# mit beiden Programmen; gibt es das Release schon, werden die Dateien
-# nur ergänzt bzw. aktualisiert. Ein von Hand veröffentlichtes Release bekommt
-# die Pakete ebenfalls angehängt.
+# Bei jedem Push auf main wird für Windows und Linux gebaut und getestet –
+# veröffentlicht wird dabei NICHTS.
+#
+# Ein Release (v<Version aus Cargo.toml>, mit beiden Programmen) entsteht nur
+# auf ausdrückliche Anforderung:
+#   - Commit auf main, dessen Nachricht „[release]“ enthält, oder
+#   - manueller Start: Actions → Build → „Run workflow“ (Branch main).
+# Gibt es das Release schon, werden nur die Dateien aktualisiert.
+# Ein von Hand auf GitHub veröffentlichtes Release bekommt die Pakete ebenfalls.
 
 on:
   push:
@@ -80,7 +83,11 @@ jobs:
 
   release:
     needs: [windows, linux]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]'))
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,12 +104,19 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-          # Release-Text aus der Versionstabelle der README
-          notes=$(grep -m1 "^| $version |" README.md | cut -d'|' -f3- | sed 's/|[[:space:]]*$//; s/^[[:space:]]*//')
+          # Release-Text: alle Zeilen der Versionstabelle seit dem letzten Release
+          last=$(gh release view --json tagName --jq .tagName 2>/dev/null | sed 's/^v//' || true)
+          : > rows.md
+          grep -E '^\| [0-9]+\.[0-9]+\.[0-9]+ \|' README.md | while IFS= read -r line; do
+            v=$(echo "$line" | cut -d'|' -f2 | tr -d ' ')
+            if [ -n "$last" ] && [ "$v" = "$last" ] && [ "$v" != "$version" ]; then break; fi
+            text=$(echo "$line" | cut -d'|' -f3- | sed 's/|[[:space:]]*$//; s/^[[:space:]]*//')
+            echo "- **$v:** $text" >> rows.md
+          done
           {
             echo "## Version $version"
             echo
-            echo "${notes:-Neue Version.}"
+            if [ -s rows.md ]; then cat rows.md; else echo "Neue Version."; fi
             echo
             echo "**Windows:** \`CyberGiveaway-windows-x64.zip\` (Programm, Beispiel-Config, README) oder direkt \`CyberGiveaway-windows-x64.exe\`."
             echo

@@ -101,6 +101,7 @@ pub struct SettingsPatch {
     pub hide_eve_names: Option<bool>,
     pub start_in_tray: Option<bool>,
     pub close_to_tray: Option<bool>,
+    pub overlay_show_open: Option<bool>,
 }
 
 impl SettingsPatch {
@@ -128,7 +129,8 @@ impl SettingsPatch {
             eve2twitch_bot_name,
             hide_eve_names,
             start_in_tray,
-            close_to_tray
+            close_to_tray,
+            overlay_show_open
         );
         if let Some(t) = self.oauth_token.as_ref().filter(|t| !t.trim().is_empty()) {
             c.oauth_token = t.trim().to_string();
@@ -1327,7 +1329,9 @@ impl Engine {
     fn overlay_json(&self) -> String {
         let (mode, visible) = match self.phase {
             Phase::Ready => ("idle", false),
-            Phase::Open => ("open", true),
+            // Große Teilnahme-Anzeige nur, wenn gewünscht – die Timer-Anzeige
+            // (/timer) bekommt den Zustand trotzdem über `mode`.
+            Phase::Open => ("open", self.cfg.overlay_show_open),
             Phase::Running => ("run", true),
             Phase::Won => ("winner", true),
         };
@@ -1482,6 +1486,7 @@ impl Engine {
             "eve_enabled": c.eve_enabled, "eve_command": c.eve_command, "eve_api_url": c.eve_api_url,
             "eve_api_key_set": !c.eve_api_key.trim().is_empty(), "eve2twitch_bot_name": c.eve2twitch_bot_name,
             "hide_eve_names": c.hide_eve_names, "start_in_tray": c.start_in_tray, "close_to_tray": c.close_to_tray,
+            "overlay_show_open": c.overlay_show_open,
             "winners": c.winners.max(1), "prize_text": c.prize_text, "prizes": c.prizes,
             "eve_sso_client_id": c.eve_sso_client_id, "eve_sso_structures": c.eve_sso_structures,
             "eve_sso_connected": self.sso_connected(), "eve_sso_character_name": c.eve_sso_character_name,
@@ -2318,6 +2323,31 @@ mod tests {
         assert!(dock.contains("\"eve_sso_connected\":true"));
         assert!(e.handle_dock(DockCmd::Winners { n: 4 }).is_ok());
         assert_eq!(e.cfg.winners, 4);
+        e.shutdown();
+    }
+
+    #[test]
+    fn open_panel_can_be_hidden() {
+        let dir = std::env::temp_dir().join(format!("cg-open-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        let mut e = Engine::new(
+            Config {
+                web_port: 19366,
+                sound: false,
+                overlay_show_open: false,
+                ..Default::default()
+            },
+            db,
+        );
+        e.toggle_entries("!hack", "1:00");
+        let json = e.overlay_json();
+        // Großes Overlay unsichtbar, Timer-Anzeige kennt die offene Phase trotzdem
+        assert!(json.contains("\"visible\":false"));
+        assert!(json.contains("\"mode\":\"open\""));
+        assert!(json.contains("\"timer_active\":true"));
+        e.cfg.overlay_show_open = true;
+        assert!(e.overlay_json().contains("\"visible\":true"));
         e.shutdown();
     }
 

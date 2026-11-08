@@ -55,6 +55,9 @@ pub struct Config {
     pub start_in_tray: bool,
     /// Das X des Fensters schließt in den Tray statt das Programm zu beenden (Windows).
     pub close_to_tray: bool,
+    /// Große Teilnahme-Anzeige („Host-Zugang offen“) im Overlay zeigen.
+    /// Aus, wenn die kleine Timer-Anzeige (/timer) genutzt wird.
+    pub overlay_show_open: bool,
     /// Unbekannte Schlüssel bleiben beim Speichern erhalten.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -94,6 +97,7 @@ impl Default for Config {
             eve_sso_structures: false,
             start_in_tray: true,
             close_to_tray: true,
+            overlay_show_open: true,
             decker_name: String::new(),
             extra: Map::new(),
         }
