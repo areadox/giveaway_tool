@@ -13,6 +13,7 @@ mod overlay;
 mod prize;
 mod sound;
 mod sso;
+mod tray;
 mod twitch;
 
 use std::sync::{Arc, Mutex};
@@ -54,7 +55,12 @@ fn main() {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("MATRIX-RUN // Twitch Giveaway")
             .with_inner_size([600.0, 620.0])
-            .with_min_inner_size([520.0, 480.0]),
+            .with_min_inner_size([520.0, 480.0])
+            .with_icon(std::sync::Arc::new(eframe::egui::IconData {
+                rgba: tray::icon_rgba(64),
+                width: 64,
+                height: 64,
+            })),
         ..Default::default()
     };
     let e2 = engine.clone();

@@ -36,7 +36,7 @@ pub enum Tone {
 #[derive(Debug)]
 pub enum Inbound {
     /// Befehl aus dem OBS-Bedien-Dock.
-    Dock(DockCmd),
+    Dock(DockCmd, Option<mpsc::Sender<DockReply>>),
     Chat {
         user: String,
         msg: String,
@@ -70,6 +70,97 @@ pub enum Inbound {
     },
 }
 
+/// Antwort auf einen Dock-Befehl: optionale Daten oder Fehlermeldung.
+pub type DockReply = Result<Option<Value>, String>;
+
+/// Einstellungen aus dem Dock; nur gesetzte Felder werden übernommen.
+/// Tokens/Schlüssel werden nur geändert, wenn ein neuer Wert kommt.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SettingsPatch {
+    pub channel: Option<String>,
+    pub bot_username: Option<String>,
+    pub oauth_token: Option<String>,
+    pub keyword: Option<String>,
+    pub web_port: Option<u32>,
+    pub timer_duration: Option<String>,
+    pub hack_duration: Option<f64>,
+    pub decker_name: Option<String>,
+    pub sound: Option<bool>,
+    pub auto_enabled: Option<bool>,
+    pub auto_interval: Option<String>,
+    pub auto_winner_hold: Option<f64>,
+    pub open_message: Option<String>,
+    pub close_message: Option<String>,
+    pub win_message: Option<String>,
+    pub eve_enabled: Option<bool>,
+    pub eve_command: Option<String>,
+    pub eve_api_url: Option<String>,
+    pub eve_api_key: Option<String>,
+    pub eve2twitch_bot_name: Option<String>,
+    pub hide_eve_names: Option<bool>,
+    pub start_in_tray: Option<bool>,
+    pub close_to_tray: Option<bool>,
+}
+
+impl SettingsPatch {
+    /// Wendet den Patch auf eine Kopie der Konfiguration an und prüft Zahlenbereiche.
+    pub fn apply_to(&self, base: &Config) -> Result<Config, String> {
+        let mut c = base.clone();
+        macro_rules! set {
+            ($($f:ident),*) => { $( if let Some(v) = &self.$f { c.$f = v.clone(); } )* };
+        }
+        set!(
+            channel,
+            bot_username,
+            keyword,
+            timer_duration,
+            decker_name,
+            sound,
+            auto_enabled,
+            auto_interval,
+            open_message,
+            close_message,
+            win_message,
+            eve_enabled,
+            eve_command,
+            eve_api_url,
+            eve2twitch_bot_name,
+            hide_eve_names,
+            start_in_tray,
+            close_to_tray
+        );
+        if let Some(t) = self.oauth_token.as_ref().filter(|t| !t.trim().is_empty()) {
+            c.oauth_token = t.trim().to_string();
+        }
+        if let Some(k) = self.eve_api_key.as_ref().filter(|k| !k.trim().is_empty()) {
+            c.eve_api_key = k.trim().to_string();
+        }
+        if let Some(p) = self.web_port {
+            if !(1..=65535).contains(&p) {
+                return Err("Port muss 1–65535 sein".into());
+            }
+            c.web_port = p as u16;
+        }
+        if let Some(h) = self.hack_duration {
+            if !h.is_finite() || h < 8.0 {
+                return Err("Run-Dauer: Zahl ab 8 Sekunden".into());
+            }
+            c.hack_duration = h.min(600.0);
+        }
+        if let Some(h) = self.auto_winner_hold {
+            if !h.is_finite() || h < 3.0 {
+                return Err("Gewinner-Anzeige: mindestens 3 Sekunden".into());
+            }
+            c.auto_winner_hold = h.min(3600.0);
+        }
+        if c.keyword.trim().is_empty() {
+            c.keyword = "!join".into();
+        }
+        Ok(c)
+    }
+}
+
 /// Befehle des OBS-Bedien-Docks (`POST /api/dock`).
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(tag = "cmd", rename_all = "lowercase")]
@@ -90,6 +181,28 @@ pub enum DockCmd {
     Reset,
     /// Auto-Giveaway ein-/ausschalten (wird in config.json gespeichert)
     Auto {
+        enabled: bool,
+    },
+    /// Einstellungen speichern und übernehmen
+    Settings {
+        settings: SettingsPatch,
+    },
+    Winners {
+        n: u32,
+    },
+    Prizes {
+        prizes: Vec<Prize>,
+        text: String,
+    },
+    /// Liste der geladenen EVE-Assets abrufen
+    Assets,
+    LoadAssets,
+    SsoConnect,
+    SsoLogout,
+    SsoClient {
+        id: String,
+    },
+    SsoStructures {
         enabled: bool,
     },
 }
@@ -1074,7 +1187,37 @@ impl Engine {
             match item {
                 Inbound::Chat { user, msg } => self.handle_chat(user, msg),
                 Inbound::Log(t, tone) => self.log(t, tone),
-                Inbound::Dock(cmd) => self.handle_dock(cmd),
+                Inbound::Dock(DockCmd::Settings { settings }, reply) => {
+                    // Erst prüfen und antworten, dann übernehmen: ein Port-Wechsel
+                    // startet den Webserver neu, über den die Antwort gerade läuft.
+                    let result = settings
+                        .apply_to(&self.cfg)
+                        .and_then(|c| self.validate_config(&c).map(|_| c));
+                    match result {
+                        Ok(cfg) => {
+                            if let Some(r) = reply {
+                                let _ = r.send(Ok(None));
+                            }
+                            self.log("Dock: Einstellungen gespeichert", Tone::Dark);
+                            if let Err(e) = self.apply_config(cfg) {
+                                self.log(format!("Einstellungen nicht übernommen: {e}"), Tone::Red);
+                            }
+                        }
+                        Err(e) => {
+                            if let Some(r) = reply {
+                                let _ = r.send(Err(e));
+                            }
+                        }
+                    }
+                }
+                Inbound::Dock(cmd, reply) => {
+                    let result = self.handle_dock(cmd);
+                    if let Some(r) = reply {
+                        let _ = r.send(result);
+                    } else if let Err(e) = result {
+                        self.log(e, Tone::Red);
+                    }
+                }
                 Inbound::JoinReady { login, ign } => {
                     if let Some(i) = ign {
                         self.eve_cache.insert(login.clone(), i);
@@ -1254,7 +1397,7 @@ impl Engine {
 
     // ------------------------------------------------------------ OBS-Dock
 
-    fn handle_dock(&mut self, cmd: DockCmd) {
+    fn handle_dock(&mut self, cmd: DockCmd) -> DockReply {
         match cmd {
             DockCmd::Toggle {
                 keyword,
@@ -1284,9 +1427,69 @@ impl Engine {
                 c.auto_enabled = enabled;
                 if let Err(e) = self.apply_config(c) {
                     self.log(format!("Auto-Giveaway nicht umgeschaltet: {e}"), Tone::Red);
+                    return Err(e);
                 }
             }
+            DockCmd::Settings { settings } => {
+                let cfg = settings.apply_to(&self.cfg)?;
+                self.apply_config(cfg)?;
+            }
+            DockCmd::Winners { n } => self.set_winners(n),
+            DockCmd::Prizes { prizes, text } => {
+                let prizes = prizes
+                    .into_iter()
+                    .filter(|p| !p.name.trim().is_empty())
+                    .map(|mut p| {
+                        p.quantity = p.quantity.max(1);
+                        p
+                    })
+                    .collect();
+                self.set_prizes(prizes, text.trim().to_string());
+            }
+            DockCmd::Assets => {
+                return Ok(Some(
+                    serde_json::to_value(&self.assets).unwrap_or(Value::Null),
+                ));
+            }
+            DockCmd::LoadAssets => self.load_assets(),
+            DockCmd::SsoConnect => {
+                let url = self.sso_begin()?;
+                // Im Systembrowser öffnen (das Dock selbst läuft in OBS)
+                let u = url.clone();
+                std::thread::spawn(move || {
+                    let _ = open::that(u);
+                });
+                return Ok(Some(Value::String(url)));
+            }
+            DockCmd::SsoLogout => self.sso_logout(),
+            DockCmd::SsoClient { id } => self.set_sso_client_id(&id),
+            DockCmd::SsoStructures { enabled } => self.set_sso_structures(enabled),
         }
+        self.dirty = true;
+        Ok(None)
+    }
+
+    /// Einstellungen für das Dock – ohne Tokens und Schlüssel.
+    fn settings_view(&self) -> Value {
+        let c = &self.cfg;
+        serde_json::json!({
+            "channel": c.channel, "bot_username": c.bot_username,
+            "oauth_token_set": !c.oauth_token.trim().is_empty(),
+            "keyword": c.keyword, "web_port": c.web_port, "timer_duration": c.timer_duration,
+            "hack_duration": c.hack_duration, "decker_name": c.decker_name, "sound": c.sound,
+            "auto_enabled": c.auto_enabled, "auto_interval": c.auto_interval, "auto_winner_hold": c.auto_winner_hold,
+            "open_message": c.open_message, "close_message": c.close_message, "win_message": c.win_message,
+            "eve_enabled": c.eve_enabled, "eve_command": c.eve_command, "eve_api_url": c.eve_api_url,
+            "eve_api_key_set": !c.eve_api_key.trim().is_empty(), "eve2twitch_bot_name": c.eve2twitch_bot_name,
+            "hide_eve_names": c.hide_eve_names, "start_in_tray": c.start_in_tray, "close_to_tray": c.close_to_tray,
+            "winners": c.winners.max(1), "prize_text": c.prize_text, "prizes": c.prizes,
+            "eve_sso_client_id": c.eve_sso_client_id, "eve_sso_structures": c.eve_sso_structures,
+            "eve_sso_connected": self.sso_connected(), "eve_sso_character_name": c.eve_sso_character_name,
+            "callback_url": sso::callback_url(self.callback_port()),
+            "scopes": sso::scopes(c.eve_sso_structures),
+            "assets_status": self.assets_status, "assets_loading": self.assets_loading,
+            "assets_count": self.assets.len(), "assets_version": self.assets_version,
+        })
     }
 
     /// Statusdaten für das Bedien-Dock (enthält im Gegensatz zum Overlay
@@ -1343,13 +1546,15 @@ impl Engine {
             "run": run,
             "log": log,
             "overlay_url": self.overlay_url,
+            "settings": self.settings_view(),
         })
         .to_string()
     }
 
     // ------------------------------------------------------------ Konfiguration
 
-    pub fn apply_config(&mut self, new: Config) -> Result<(), String> {
+    /// Prüft eine neue Konfiguration, ohne sie zu übernehmen.
+    pub fn validate_config(&self, new: &Config) -> Result<(), String> {
         let giveaway = config::parse_duration(&new.timer_duration)?;
         if new.auto_enabled {
             let pause = config::parse_duration(&new.auto_interval)
@@ -1364,11 +1569,16 @@ impl Engine {
                 );
             }
         }
-        let auto_changed = new.auto_enabled != self.cfg.auto_enabled
-            || new.auto_interval != self.cfg.auto_interval;
         if new.web_port == 0 {
             return Err("Port muss 1–65535 sein".into());
         }
+        Ok(())
+    }
+
+    pub fn apply_config(&mut self, new: Config) -> Result<(), String> {
+        self.validate_config(&new)?;
+        let auto_changed = new.auto_enabled != self.cfg.auto_enabled
+            || new.auto_interval != self.cfg.auto_interval;
         config::save(&config::config_path(), &new)
             .map_err(|e| format!("Speichern fehlgeschlagen: {e}"))?;
         let restart_irc = new.channel != self.cfg.channel
@@ -2031,6 +2241,83 @@ mod tests {
         }
         assert_eq!(e.winners.len(), 1);
         assert_eq!(e.winners[0].login, "solo");
+        e.shutdown();
+    }
+
+    #[test]
+    fn dock_settings_and_secrets() {
+        let base = Config {
+            oauth_token: "geheim123".into(),
+            eve_api_key: "key456".into(),
+            ..Default::default()
+        };
+        // Leeres Token-Feld lässt das Token unverändert
+        let p = SettingsPatch {
+            oauth_token: Some(String::new()),
+            keyword: Some("!hack".into()),
+            web_port: Some(9000),
+            ..Default::default()
+        };
+        let c = p.apply_to(&base).unwrap();
+        assert_eq!(c.oauth_token, "geheim123");
+        assert_eq!(c.keyword, "!hack");
+        assert_eq!(c.web_port, 9000);
+        let p = SettingsPatch {
+            oauth_token: Some(" neu ".into()),
+            ..Default::default()
+        };
+        assert_eq!(p.apply_to(&base).unwrap().oauth_token, "neu");
+        assert!(SettingsPatch {
+            web_port: Some(70000),
+            ..Default::default()
+        }
+        .apply_to(&base)
+        .is_err());
+        assert!(SettingsPatch {
+            hack_duration: Some(2.0),
+            ..Default::default()
+        }
+        .apply_to(&base)
+        .is_err());
+        // JSON aus dem Dock wird korrekt gelesen
+        let cmd: DockCmd = serde_json::from_str(r#"{"cmd":"settings","settings":{"channel":"areadox","sound":false,"auto_winner_hold":15}}"#).unwrap();
+        let DockCmd::Settings { settings } = cmd else {
+            panic!("falscher Befehl")
+        };
+        let c = settings.apply_to(&base).unwrap();
+        assert_eq!(
+            (c.channel.as_str(), c.sound, c.auto_winner_hold),
+            ("areadox", false, 15.0)
+        );
+        let cmd: DockCmd = serde_json::from_str(
+            r#"{"cmd":"prizes","prizes":[{"name":"Gila","quantity":2,"type_id":17715}],"text":""}"#,
+        )
+        .unwrap();
+        assert!(matches!(cmd, DockCmd::Prizes { .. }));
+
+        let dir = std::env::temp_dir().join(format!("cg-docks-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        let mut e = Engine::new(
+            Config {
+                web_port: 19266,
+                sound: false,
+                oauth_token: "geheim123".into(),
+                eve_api_key: "key456".into(),
+                eve_sso_refresh_token: "refresh789".into(),
+                eve_sso_character_id: Some(1),
+                ..Default::default()
+            },
+            db,
+        );
+        let dock = e.dock_json();
+        for secret in ["geheim123", "key456", "refresh789"] {
+            assert!(!dock.contains(secret), "{secret} darf nicht ins Dock");
+        }
+        assert!(dock.contains("\"oauth_token_set\":true"));
+        assert!(dock.contains("\"eve_sso_connected\":true"));
+        assert!(e.handle_dock(DockCmd::Winners { n: 4 }).is_ok());
+        assert_eq!(e.cfg.winners, 4);
         e.shutdown();
     }
 

@@ -4,7 +4,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.7**
+Aktuelle Version: **0.0.8**
 
 ## Funktionen
 
@@ -55,6 +55,16 @@ Alle Downloads liegen unter [Releases](https://github.com/areadox/giveaway_tool/
 
 Konfiguration und Datenbank liegen immer neben dem Programm.
 
+## Tray (Infobereich)
+
+Unter Windows startet das Programm standardmäßig nur als Symbol im Tray (Infobereich der Taskleiste) – der Giveaway läuft im Hintergrund, bedient wird über das OBS-Dock.
+
+- **Doppelklick** (oder Linksklick) auf das Symbol öffnet das Programmfenster.
+- **Rechtsklick** öffnet das Menü: Fenster anzeigen, Bedien-Dock im Browser öffnen, Overlay-Demo öffnen, Beenden.
+- Das **X** des Fensters blendet es nur aus; beendet wird über „Beenden“ im Tray-Menü.
+
+Beides lässt sich unter *Einstellungen* bzw. im Dock abschalten (`start_in_tray`, `close_to_tray`). Beim allerersten Start (noch kein Kanal/Token eingetragen) öffnet sich immer das Fenster mit den Einstellungen. Unter Linux gibt es kein Tray-Symbol; dort startet das Programm mit `start_in_tray` minimiert.
+
 ## Bedienung
 
 | Knopf | Wirkung |
@@ -82,6 +92,8 @@ Die Anmeldung wird als Refresh-Token in `config.json` gespeichert (wie das Twitc
 
 In OBS unter **Docks → Benutzerdefinierte Browser-Docks** einen Namen (z. B. „Giveaway“) und die URL `http://localhost:8766/dock` eintragen. Das Dock zeigt Status, Countdown, Teilnehmer, Gewinner (mit EVE-Porträt) und das Protokoll. Es enthält die Knöpfe START / STOP & AUSLOSEN, BREACH und RESET (RESET verlangt einen zweiten Klick) und den Schalter für das Auto-Giveaway (wird in `config.json` gespeichert). Unter „Giveaway-Werte“ lassen sich Keyword, Dauer und Run-Dauer für den nächsten Start anpassen.
 
+Unter **Einstellungen** stehen alle Einstellungen des Programms zur Verfügung (Twitch, Giveaway, Auto-Giveaway, Chat-Texte, EVE, Port und Tray-Verhalten), unter **Preise** die Preisbeschreibung, die Preisliste (Reihenfolge, Menge, eigene Preise) sowie EVE-Anmeldung, Asset-Suche und „+ Preis“. Die EVE-Anmeldung öffnet sich im normalen Browser. OAuth-Token und eve2twitch-Key zeigt das Dock nie an; dort eingetragen werden sie nur, wenn ein neuer Wert eingegeben wird. Die Datenbank-Zuordnungen und der Verlauf bleiben im Programmfenster.
+
 Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). Aufrufe aus dem Netzwerk und von fremden Webseiten werden abgelehnt; das Overlay selbst bleibt im Netzwerk erreichbar.
 
 ## Konfiguration (`config.json`)
@@ -104,6 +116,8 @@ Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). 
 | `prizes` | Preisliste (wird im Programm gepflegt) |
 | `eve_sso_client_id` | Client-ID der eigenen EVE-App für den Asset-Abruf |
 | `eve_sso_structures` | zusätzlich den Scope für Strukturnamen anfragen (Standard: `false`) |
+| `start_in_tray` | beim Start nur im Tray (Linux: minimiert) (Standard: `true`) |
+| `close_to_tray` | Fenster-X schließt in den Tray, Windows (Standard: `true`) |
 | `eve_sso_refresh_token`, `eve_sso_character_id`, `eve_sso_character_name` | EVE-Anmeldung (wird vom Programm gesetzt) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`, `{prize}`). Fehlt `{prize}`, wird der Preis automatisch angehängt; bei mehreren Gewinnern geht je Gewinner eine Nachricht raus (ab 11 Gewinnern eine Sammelliste). |
 | `sound` | Soundeffekte im Programm |
@@ -134,6 +148,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 | `src/esi.rs` | EVE-ESI und eve2twitch |
 | `src/sso.rs` | EVE-Anmeldung (SSO/PKCE) und Asset-Abruf |
 | `src/prize.rs` | Preise und Zuordnung zu den Gewinnern |
+| `src/tray.rs` | Programm-Icon und Tray-Symbol (Windows) |
 | `src/db.rs`, `src/config.rs`, `src/sound.rs` | Datenbank, Konfiguration, Soundeffekte |
 
 *Shadowrun* ist eine Marke der Topps Company, Inc. Dieses Tool ist ein inoffizielles Fanprojekt und nutzt nur allgemeine Spielbegriffe; Hosts, Decks und Texte sind frei erfunden.
@@ -142,6 +157,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.8 | Alle Einstellungen und Preise (inkl. EVE-Assets) im OBS-Dock; Start minimiert im Tray mit Tray-Menü, X schließt in den Tray (Windows); Programm-Icon |
 | 0.0.7 | EVE-Anmeldung: ein Rückruf aus einem älteren Anmeldeversuch bricht die laufende Anmeldung nicht mehr ab |
 | 0.0.6 | EVE-Anmeldung fragt standardmäßig nur noch den Asset-Scope an; Strukturnamen optional per Haken; verständliche Meldung bei fehlendem Scope |
 | 0.0.5 | Mehrere Gewinner; Preisbeschreibung und Preisliste (Overlay, Timer, Dock, Chat, Verlauf); EVE-Anmeldung und Auswahl von Preisen aus den eigenen Assets |

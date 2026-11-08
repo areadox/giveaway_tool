@@ -112,6 +112,12 @@ pub struct GuiApp {
     hack: String,
     duration: String,
     settings: Option<Settings>,
+    /// Fenster-Handle (Windows) für Ein-/Ausblenden aus dem Tray
+    hwnd: Arc<std::sync::atomic::AtomicIsize>,
+    frames: u64,
+    start_hidden: bool,
+    #[cfg(windows)]
+    tray: Option<crate::tray::Tray>,
 }
 
 impl GuiApp {
@@ -130,12 +136,67 @@ impl GuiApp {
                 e.cfg.needs_setup(),
             )
         };
+        let start_hidden =
+            !needs_setup && engine.lock().map(|e| e.cfg.start_in_tray).unwrap_or(false);
+        let hwnd = Arc::new(std::sync::atomic::AtomicIsize::new(0));
+        #[cfg(windows)]
+        let tray = {
+            use std::sync::atomic::Ordering;
+            let (h1, c1) = (hwnd.clone(), cc.egui_ctx.clone());
+            let (e_dock, e_demo, e_quit) = (engine.clone(), engine.clone(), engine.clone());
+            let url = |e: &Arc<Mutex<Engine>>, path: &str| {
+                e.lock()
+                    .ok()
+                    .map(|e| e.overlay_url.clone())
+                    .filter(|u| !u.is_empty())
+                    .map(|u| format!("{u}{path}"))
+            };
+            let actions = crate::tray::Actions {
+                show: Box::new(move || {
+                    crate::tray::show_window(h1.load(Ordering::Relaxed));
+                    c1.request_repaint();
+                }),
+                open_dock: Box::new(move || {
+                    if let Some(u) = url(&e_dock, "/dock") {
+                        let _ = open::that(u);
+                    }
+                }),
+                open_overlay: Box::new(move || {
+                    if let Some(u) = url(&e_demo, "/test") {
+                        let _ = open::that(u);
+                    }
+                }),
+                quit: Box::new(move || {
+                    if let Ok(mut e) = e_quit.lock() {
+                        e.shutdown();
+                    }
+                    std::process::exit(0);
+                }),
+            };
+            match crate::tray::Tray::new(actions) {
+                Ok(t) => Some(t),
+                Err(err) => {
+                    if let Ok(mut e) = engine.lock() {
+                        e.log(
+                            format!("Tray-Symbol nicht verfügbar: {err}"),
+                            crate::engine::Tone::Yellow,
+                        );
+                    }
+                    None
+                }
+            }
+        };
         let mut app = Self {
             engine,
             keyword,
             hack,
             duration,
             settings: None,
+            hwnd,
+            frames: 0,
+            start_hidden,
+            #[cfg(windows)]
+            tray,
         };
         if needs_setup {
             app.open_settings();
@@ -207,7 +268,8 @@ fn big_button(ui: &mut egui::Ui, text: &str, color: Color32, width: f32) -> egui
 }
 
 impl eframe::App for GuiApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.window_management(ctx, frame);
         let mut open_settings = false;
         let mut action: Option<&'static str> = None;
         let mut new_winners: Option<u32> = None;
@@ -473,6 +535,51 @@ impl eframe::App for GuiApp {
 }
 
 impl GuiApp {
+    /// Tray-Verhalten: beim Start ausblenden, X schließt in den Tray (Windows),
+    /// sonst minimiert starten.
+    fn window_management(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
+        use std::sync::atomic::Ordering;
+        self.frames += 1;
+        if self.hwnd.load(Ordering::Relaxed) == 0 {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(h) = frame.window_handle() {
+                if let RawWindowHandle::Win32(w) = h.as_raw() {
+                    self.hwnd.store(w.hwnd.get(), Ordering::Relaxed);
+                }
+            }
+        }
+        #[cfg(windows)]
+        let has_tray = self.tray.is_some();
+        #[cfg(not(windows))]
+        let has_tray = false;
+
+        // eframe blendet das Fenster nach dem ersten Bild ein – danach ausblenden
+        if self.start_hidden {
+            if self.frames < 3 {
+                ctx.request_repaint();
+            } else {
+                self.start_hidden = false;
+                #[cfg(windows)]
+                if has_tray {
+                    crate::tray::hide_window(self.hwnd.load(Ordering::Relaxed));
+                    return;
+                }
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            }
+        }
+
+        let close_to_tray = self
+            .engine
+            .lock()
+            .map(|e| e.cfg.close_to_tray)
+            .unwrap_or(false);
+        if has_tray && close_to_tray && ctx.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            #[cfg(windows)]
+            crate::tray::hide_window(self.hwnd.load(Ordering::Relaxed));
+        }
+    }
+
     fn settings_window(&mut self, ctx: &egui::Context) {
         if self.settings.is_none() {
             return;
@@ -756,6 +863,12 @@ fn general_tab(ui: &mut egui::Ui, st: &mut Settings) {
             field(ui, "Decker-Name im Overlay", &mut d.decker_name, false, "Leer = Twitch-Channel");
             ui.label(RichText::new("Sound").color(CYAN));
             ui.checkbox(&mut d.sound, "Soundeffekte im Programm");
+            ui.end_row();
+            ui.label(RichText::new("Programmstart").color(CYAN));
+            ui.checkbox(&mut d.start_in_tray, "nur im Tray starten (Linux: minimiert)");
+            ui.end_row();
+            ui.label(RichText::new("Fenster schließen").color(CYAN));
+            ui.checkbox(&mut d.close_to_tray, "X schließt in den Tray (Windows) – Beenden über das Tray-Menü");
             ui.end_row();
             ui.label(RichText::new("Auto-Giveaway").color(CYAN));
             ui.checkbox(&mut d.auto_enabled, "an – öffnet Giveaways selbst und beginnt danach von vorn");

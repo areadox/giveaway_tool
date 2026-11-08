@@ -51,6 +51,10 @@ pub struct Config {
     pub eve_sso_character_name: String,
     /// Zusätzlich den Scope für Strukturnamen anfragen (muss in der EVE-App eingetragen sein).
     pub eve_sso_structures: bool,
+    /// Beim Start nur das Tray-Symbol zeigen (Linux: minimiert starten).
+    pub start_in_tray: bool,
+    /// Das X des Fensters schließt in den Tray statt das Programm zu beenden (Windows).
+    pub close_to_tray: bool,
     /// Unbekannte Schlüssel bleiben beim Speichern erhalten.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -88,6 +92,8 @@ impl Default for Config {
             eve_sso_character_id: None,
             eve_sso_character_name: String::new(),
             eve_sso_structures: false,
+            start_in_tray: true,
+            close_to_tray: true,
             decker_name: String::new(),
             extra: Map::new(),
         }

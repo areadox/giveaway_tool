@@ -305,9 +305,24 @@ async fn dock_cmd(
     if !addr.ip().is_loopback() || !local_origin(&headers) {
         return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
     }
-    match st.cmd.send(Inbound::Dock(cmd)) {
-        Ok(()) => StatusCode::ACCEPTED.into_response(),
-        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "Giveaway-Tool beendet").into_response(),
+    let (tx, rx) = mpsc::channel();
+    if st.cmd.send(Inbound::Dock(cmd, Some(tx))).is_err() {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Giveaway-Tool beendet").into_response();
+    }
+    // Auf die Antwort der Engine warten (läuft in eigenem Thread)
+    let reply = tokio::task::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(10))).await;
+    match reply {
+        Ok(Ok(Ok(data))) => Json(serde_json::json!({ "ok": true, "data": data })).into_response(),
+        Ok(Ok(Err(e))) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "ok": false, "error": e })),
+        )
+            .into_response(),
+        _ => (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(serde_json::json!({ "ok": false, "error": "Keine Antwort vom Giveaway-Tool" })),
+        )
+            .into_response(),
     }
 }
 

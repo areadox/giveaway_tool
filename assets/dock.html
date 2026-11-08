@@ -85,6 +85,36 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
 .log p{margin:0}
 .log time{color:#6b62a8;margin-right:6px;font-variant-numeric:tabular-nums}
 .log .green{color:#a6f5e6}.log .red{color:#ffb0d6}.log .yellow{color:var(--gold)}.log .cyan{color:var(--text)}.log .magenta{color:var(--edge)}
+.sect{border:1px solid var(--line);border-radius:3px;background:var(--panel)}
+.sect>summary{cursor:pointer;padding:8px 10px;font-weight:600}
+.grp{padding:0 10px 10px}
+.grp h3{margin:10px 0 6px;font-size:12px;font-weight:600;color:var(--decker)}
+.form{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;align-items:center}
+.form label{font-size:12px;color:var(--muted)}
+.form input[type=text],.form input[type=password],.form input[type=number],.form textarea,.pzrow input,.wide{width:100%;background:var(--field);border:1px solid var(--line);border-radius:2px;padding:5px 7px;font:inherit;font-size:13px;color:var(--text)}
+.form textarea{resize:vertical;min-height:44px}
+.form .chk{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)}
+.form .hint{grid-column:1/-1;font-size:11px;color:var(--muted)}
+.form .warn{color:var(--gold)}
+.savebar{display:flex;align-items:center;gap:8px;margin-top:10px}
+.savebar .btn{flex:none}
+.msg{font-size:12px}
+.msg.ok{color:var(--decker)}.msg.err{color:var(--glitch)}
+.pzrow{display:grid;grid-template-columns:24px 64px minmax(0,1fr) auto;gap:6px;align-items:center;margin-bottom:6px}
+.pzrow img{width:24px;height:24px;border:1px solid var(--line)}
+.pzrow .no{width:24px;height:24px;display:grid;place-items:center;color:var(--muted);font-size:11px}
+.pzrow .ops{display:flex;gap:2px}
+.mini{border:1px solid var(--line);background:var(--field);color:var(--text);border-radius:2px;padding:2px 6px;font:inherit;font-size:12px;cursor:pointer}
+.mini:disabled{opacity:.35;cursor:default}
+.loc{grid-column:3/-1;font-size:11px;color:var(--muted);margin-top:-4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assets{max-height:300px;overflow:auto;border-top:1px solid var(--line);margin-top:8px}
+.arow{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(58,49,112,.5)}
+.arow img{width:24px;height:24px}
+.arow .n{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arow .l{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arow .on{font-size:11px;color:var(--decker)}
+.row2{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.code{font-size:11px;word-break:break-all;color:var(--text);background:var(--field);padding:3px 6px;border:1px solid var(--line);border-radius:2px;user-select:all}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -125,6 +155,102 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
     <label for="hack">Run (s)</label><input id="hack" autocomplete="off" inputmode="decimal">
     <label for="wn">Gewinner</label><input id="wn" type="number" min="1" max="100" step="1">
     <div class="hint">Gilt für den nächsten Klick auf START oder BREACH. Dauer 0 = Ende per Hand.</div>
+  </div>
+</details>
+
+<details id="cfgsec" class="sect">
+  <summary>Einstellungen</summary>
+  <form id="cfg" class="grp" autocomplete="off">
+    <h3>Twitch</h3>
+    <div class="form">
+      <label for="s_channel">Kanal</label><input type="text" id="s_channel" name="channel">
+      <label for="s_bot">Bot-Account</label><input type="text" id="s_bot" name="bot_username">
+      <label for="s_token">OAuth-Token</label><input type="password" id="s_token" name="oauth_token">
+      <div class="hint" id="s_token_hint"></div>
+    </div>
+    <h3>Giveaway</h3>
+    <div class="form">
+      <label for="s_kw">Keyword</label><input type="text" id="s_kw" name="keyword">
+      <label for="s_dur">Dauer</label><input type="text" id="s_dur" name="timer_duration" placeholder="mm:ss oder Minuten">
+      <label for="s_hack">Run (s)</label><input type="number" id="s_hack" name="hack_duration" min="8" max="600" step="1">
+      <label for="s_win">Gewinner</label><input type="number" id="s_win" name="winners" min="1" max="100" step="1">
+      <label for="s_decker">Decker-Name</label><input type="text" id="s_decker" name="decker_name" placeholder="leer = Kanalname">
+      <label class="chk"><input type="checkbox" name="sound"> Soundeffekte im Programm</label>
+    </div>
+    <h3>Auto-Giveaway</h3>
+    <div class="form">
+      <label class="chk"><input type="checkbox" name="auto_enabled"> Auto-Giveaway an</label>
+      <label for="s_ai">Pause</label><input type="text" id="s_ai" name="auto_interval" placeholder="mm:ss oder Minuten">
+      <label for="s_hold">Gewinner (s)</label><input type="number" id="s_hold" name="auto_winner_hold" min="3" max="3600" step="1">
+    </div>
+    <h3>Chat-Texte</h3>
+    <div class="form">
+      <label for="s_open">Start</label><textarea id="s_open" name="open_message"></textarea>
+      <label for="s_close">Ende</label><textarea id="s_close" name="close_message"></textarea>
+      <label for="s_wm">Gewinner</label><textarea id="s_wm" name="win_message"></textarea>
+      <div class="hint">Platzhalter: {keyword}, {winner}, {prize}</div>
+    </div>
+    <h3>EVE</h3>
+    <div class="form">
+      <label class="chk"><input type="checkbox" name="eve_enabled"> EVE-Modus (Befehl im Chat)</label>
+      <label for="s_evecmd">Befehl</label><input type="text" id="s_evecmd" name="eve_command">
+      <label for="s_eveurl">eve2twitch-URL</label><input type="text" id="s_eveurl" name="eve_api_url">
+      <label for="s_evekey">eve2twitch-Key</label><input type="password" id="s_evekey" name="eve_api_key">
+      <label for="s_evebot">Eve2Twitch-Bot</label><input type="text" id="s_evebot" name="eve2twitch_bot_name" placeholder="leer = alle">
+      <label class="chk"><input type="checkbox" name="hide_eve_names"> EVE-Namen und Porträts im Overlay verbergen</label>
+    </div>
+    <h3>Programm</h3>
+    <div class="form">
+      <label for="s_port">Port</label><input type="number" id="s_port" name="web_port" min="1" max="65535">
+      <div class="hint warn">Nach einem Port-Wechsel die URLs in OBS (Overlay, Timer, Dock) anpassen.</div>
+      <label class="chk"><input type="checkbox" name="start_in_tray"> Beim Start nur im Tray (Linux: minimiert)</label>
+      <label class="chk"><input type="checkbox" name="close_to_tray"> Fenster-X schließt in den Tray (Windows)</label>
+    </div>
+    <div class="savebar">
+      <button class="btn" type="submit" id="cfgsave">Speichern</button>
+      <button class="mini" type="button" id="cfgreset">Verwerfen</button>
+      <span id="cfgmsg" class="msg" role="status"></span>
+    </div>
+  </form>
+</details>
+
+<details id="pzsec" class="sect">
+  <summary>Preise</summary>
+  <div class="grp">
+    <div class="form">
+      <label for="p_text">Zu gewinnen</label><input type="text" id="p_text" placeholder="leer = aus der Liste">
+      <div class="hint">Mit Liste bekommt Gewinner 1 Preis 1, Gewinner 2 Preis 2 usw.</div>
+    </div>
+    <h3>Preisliste</h3>
+    <div id="pzlist"></div>
+    <div class="pzrow">
+      <span class="no">+</span>
+      <input type="number" id="p_nq" min="1" value="1" aria-label="Menge">
+      <input type="text" id="p_nn" placeholder="eigener Preis, z. B. 500 Mio. ISK" aria-label="Eigener Preis">
+      <button class="mini" type="button" id="p_add">Hinzufügen</button>
+    </div>
+    <span id="pzmsg" class="msg" role="status"></span>
+
+    <h3>EVE-Assets</h3>
+    <div id="sso_state" class="msg"></div>
+    <div class="row2">
+      <button class="mini" type="button" id="sso_connect">Mit EVE verbinden</button>
+      <button class="mini" type="button" id="sso_load">Assets laden</button>
+      <button class="mini" type="button" id="sso_logout">Abmelden</button>
+    </div>
+    <details style="margin-top:6px">
+      <summary class="msg">EVE-App einrichten</summary>
+      <div class="form" style="margin-top:6px">
+        <label for="sso_cid">Client-ID</label><input type="text" id="sso_cid">
+        <label class="chk"><input type="checkbox" id="sso_struct"> Strukturnamen (Citadels) – Scope muss in der App sein</label>
+        <div class="hint">Callback-URL der App:</div>
+        <div class="hint"><span id="sso_cb" class="code"></span></div>
+        <div class="hint">Scopes: <span id="sso_scopes"></span></div>
+      </div>
+      <div class="row2"><button class="mini" type="button" id="sso_save">Übernehmen</button></div>
+    </details>
+    <input type="text" id="a_q" class="wide" placeholder="Assets durchsuchen (Name oder Ort)" style="margin-top:8px">
+    <div id="assets" class="assets"></div>
   </div>
 </details>
 
@@ -214,6 +340,7 @@ function render(){
   const log=$('log');const atEnd=log.scrollTop+log.clientHeight>=log.scrollHeight-4;
   log.innerHTML=s.log.map(l=>`<p class="${esc(l.tone)}"><time>${esc(l.stamp)}</time>${esc(l.text)}</p>`).join('');
   if(atEnd)log.scrollTop=log.scrollHeight;
+  if(s.settings){fillSettings(s.settings);fillPrizes(s.settings);fillSso(s.settings);}
   tick();
 }
 function tick(){
@@ -224,6 +351,134 @@ function tick(){
   $('prog').style.width=mode==='auto'&&total>0?`${Math.round(100*(1-rem/total))}%`:'0';
 }
 setInterval(tick,250);
+
+
+// ---------------------------------------------------------------- Einstellungen
+const cfgForm=$('cfg');
+let cfgDirty=false;
+cfgForm.addEventListener('input',()=>{cfgDirty=true;$('cfgmsg').textContent='';});
+function fillSettings(c){
+  if(cfgDirty)return;
+  for(const el of cfgForm.elements){
+    if(!el.name)continue;
+    if(el.type==='checkbox')el.checked=!!c[el.name];
+    else if(el.type==='password'){el.value='';}
+    else el.value=c[el.name]??'';
+  }
+  $('s_token').placeholder=c.oauth_token_set?'gesetzt – leer lassen, um es zu behalten':'nicht gesetzt';
+  $('s_evekey').placeholder=c.eve_api_key_set?'gesetzt – leer lassen':'nicht gesetzt';
+  $('s_token_hint').textContent='Tokens werden nie angezeigt; nur ein neu eingetragener Wert wird gespeichert.';
+}
+function msg(id,text,ok){const m=$(id);m.textContent=text;m.className='msg '+(ok?'ok':'err');}
+async function cmd(body){
+  try{
+    const r=await fetch('/api/dock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({ok:false,error:`Fehler ${r.status}`}));
+    return j;
+  }catch(e){return {ok:false,error:'Giveaway-Tool nicht erreichbar.'};}
+}
+cfgForm.addEventListener('submit',async ev=>{
+  ev.preventDefault();
+  const c=S&&S.settings;if(!c)return;
+  const patch={};
+  for(const el of cfgForm.elements){
+    if(!el.name)continue;
+    if(el.type==='checkbox')patch[el.name]=el.checked;
+    else if(el.type==='number'){if(el.value!=='')patch[el.name]=Number(el.value);}
+    else if(el.type==='password'){if(el.value.trim())patch[el.name]=el.value.trim();}
+    else patch[el.name]=el.value;
+  }
+  const winners=patch.winners;delete patch.winners;
+  $('cfgsave').disabled=true;
+  const r=await cmd({cmd:'settings',settings:patch});
+  if(r.ok&&winners&&winners!==c.winners)await cmd({cmd:'winners',n:Math.max(1,Math.min(100,Math.round(winners)))});
+  $('cfgsave').disabled=false;
+  if(r.ok){cfgDirty=false;msg('cfgmsg','Gespeichert.',true);}
+  else msg('cfgmsg',r.error||'Nicht gespeichert.',false);
+});
+$('cfgreset').onclick=()=>{cfgDirty=false;$('cfgmsg').textContent='';if(S&&S.settings)fillSettings(S.settings);};
+
+// ---------------------------------------------------------------- Preise
+let prizes=[], prizesBusy=false, pzTextDirty=false;
+const icon=t=>`https://images.evetech.net/types/${t}/icon?size=64`;
+function drawPrizes(){
+  $('pzlist').innerHTML=prizes.length?prizes.map((p,i)=>`
+    <div class="pzrow">
+      ${p.type_id?`<img src="${icon(p.type_id)}" alt="" onerror="this.style.visibility='hidden'">`:`<span class="no">${i+1}.</span>`}
+      <input type="number" min="1" value="${p.quantity||1}" data-i="${i}" data-k="quantity" aria-label="Menge">
+      <input type="text" value="${esc(p.name)}" data-i="${i}" data-k="name" aria-label="Name">
+      <span class="ops">
+        <button class="mini" type="button" data-up="${i}" ${i===0?'disabled':''} aria-label="nach oben">▲</button>
+        <button class="mini" type="button" data-down="${i}" ${i===prizes.length-1?'disabled':''} aria-label="nach unten">▼</button>
+        <button class="mini" type="button" data-del="${i}" aria-label="entfernen">×</button>
+      </span>
+      ${p.location?`<div class="loc" title="${esc(p.location)}">${esc(p.location)}</div>`:''}
+    </div>`).join(''):'<div class="msg">Noch keine Preise.</div>';
+}
+async function savePrizes(){
+  prizesBusy=true;
+  const r=await cmd({cmd:'prizes',prizes,text:$('p_text').value});
+  prizesBusy=false;pzTextDirty=false;
+  if(r.ok)msg('pzmsg','Gespeichert.',true);else msg('pzmsg',r.error||'Nicht gespeichert.',false);
+}
+$('pzlist').addEventListener('change',e=>{const i=+e.target.dataset.i,k=e.target.dataset.k;if(!k)return;
+  prizes[i][k]=k==='quantity'?Math.max(1,parseInt(e.target.value,10)||1):e.target.value;savePrizes();});
+$('pzlist').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.del!==undefined)prizes.splice(+b.dataset.del,1);
+  else if(b.dataset.up!==undefined){const i=+b.dataset.up;[prizes[i-1],prizes[i]]=[prizes[i],prizes[i-1]];}
+  else if(b.dataset.down!==undefined){const i=+b.dataset.down;[prizes[i+1],prizes[i]]=[prizes[i],prizes[i+1]];}
+  else return;
+  drawPrizes();savePrizes();});
+$('p_add').onclick=()=>{const n=$('p_nn').value.trim();if(!n)return;
+  prizes.push({name:n,quantity:Math.max(1,parseInt($('p_nq').value,10)||1)});$('p_nn').value='';$('p_nq').value=1;drawPrizes();savePrizes();};
+$('p_text').addEventListener('input',()=>{pzTextDirty=true;});
+$('p_text').addEventListener('change',savePrizes);
+function fillPrizes(c){
+  if(prizesBusy)return;
+  const fresh=JSON.stringify(c.prizes||[]);
+  if(fresh!==JSON.stringify(prizes)&&!document.activeElement?.closest?.('#pzlist')){prizes=JSON.parse(fresh);drawPrizes();}
+  if(!pzTextDirty&&document.activeElement!==$('p_text'))$('p_text').value=c.prize_text||'';
+}
+
+// ---------------------------------------------------------------- EVE-Assets
+let assets=[], assetsVersion=-1, ssoDirty=false;
+['sso_cid','sso_struct'].forEach(id=>$(id).addEventListener('input',()=>{ssoDirty=true;}));
+function fillSso(c){
+  $('sso_state').textContent=c.eve_sso_connected?`Verbunden als ${c.eve_sso_character_name} · ${c.assets_status}`:(c.eve_sso_client_id?c.assets_status:'Zuerst unter „EVE-App einrichten“ die Client-ID eintragen.');
+  $('sso_connect').hidden=c.eve_sso_connected;$('sso_load').hidden=!c.eve_sso_connected;$('sso_logout').hidden=!c.eve_sso_connected;
+  $('sso_load').disabled=c.assets_loading;
+  $('sso_cb').textContent=c.callback_url;$('sso_scopes').textContent=c.scopes;
+  if(!ssoDirty){$('sso_cid').value=c.eve_sso_client_id||'';$('sso_struct').checked=!!c.eve_sso_structures;}
+  if(c.assets_version!==assetsVersion&&$('pzsec').open){assetsVersion=c.assets_version;fetchAssets();}
+}
+async function fetchAssets(){
+  const r=await cmd({cmd:'assets'});
+  if(r.ok){assets=r.data||[];drawAssets();}
+}
+function drawAssets(){
+  const q=$('a_q').value.trim().toLowerCase();
+  const have=new Set(prizes.filter(p=>p.item_id).map(p=>p.item_id));
+  const list=assets.filter(a=>!q||a.name.toLowerCase().includes(q)||a.location.toLowerCase().includes(q));
+  const shown=list.slice(0,200);
+  $('assets').innerHTML=(assets.length?'':'<div class="msg" style="padding:6px 0">Keine Assets geladen.</div>')+shown.map((a,i)=>`
+    <div class="arow"><img src="${icon(a.type_id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div><div class="n" title="${esc(a.name)}">${a.quantity>1?`${a.quantity.toLocaleString('de-DE')}× `:''}${esc(a.name)}</div><div class="l" title="${esc(a.location)}">${esc(a.location)}</div></div>
+      ${have.has(a.item_id)?'<span class="on">✓ Preis</span>':`<button class="mini" type="button" data-add="${a.item_id}">+ Preis</button>`}</div>`).join('')
+    +(list.length>200?`<div class="msg" style="padding:6px 0">${list.length-200} weitere – Suche verfeinern.</div>`:'');
+}
+$('a_q').addEventListener('input',drawAssets);
+$('assets').addEventListener('click',e=>{const b=e.target.closest('button[data-add]');if(!b)return;
+  const a=assets.find(x=>x.item_id===+b.dataset.add);if(!a)return;
+  prizes.push({name:a.name,quantity:a.quantity,type_id:a.type_id,item_id:a.item_id,location:a.location});drawPrizes();drawAssets();savePrizes();});
+$('pzsec').addEventListener('toggle',()=>{if($('pzsec').open&&S&&S.settings){assetsVersion=S.settings.assets_version;fetchAssets();}});
+$('sso_connect').onclick=async()=>{const r=await cmd({cmd:'ssoconnect'});
+  if(r.ok)msg('pzmsg','Anmeldung im Browser geöffnet – dort bestätigen.',true);else msg('pzmsg',r.error,false);};
+$('sso_load').onclick=()=>cmd({cmd:'loadassets'});
+$('sso_logout').onclick=()=>cmd({cmd:'ssologout'});
+$('sso_save').onclick=async()=>{
+  await cmd({cmd:'ssoclient',id:$('sso_cid').value.trim()});
+  const r=await cmd({cmd:'ssostructures',enabled:$('sso_struct').checked});
+  ssoDirty=false;if(r.ok)msg('pzmsg','EVE-App gespeichert.',true);else msg('pzmsg',r.error,false);};
 
 let retry=500;
 function connect(){

@@ -1,6 +1,6 @@
 [package]
 name = "cyber-giveaway"
-version = "0.0.7"
+version = "0.0.8"
 edition = "2021"
 description = "Twitch-Giveaway-Tool mit OBS-Overlay und simuliertem Matrix-Run im Shadowrun-Stil"
 license = "LicenseRef-Proprietary"
@@ -27,9 +27,12 @@ regex = "1"
 futures-util = "0.3"
 sha2 = "0.10"
 base64 = "0.22"
+open = "5"
+raw-window-handle = "0.6"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Media_Audio", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = ["Win32_Media_Audio", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+tray-icon = "0.26"
 
 [profile.release]
 opt-level = 3
