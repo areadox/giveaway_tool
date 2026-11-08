@@ -18,12 +18,13 @@ Aktuelle Version: **0.0.9** (Releases: siehe [GitHub](https://github.com/areadox
   - Overwatch-Wert bis zur GOD-Konvergenz bei 40, Matrix- und geistiger Zustandsmonitor, Edge (Sechser explodieren), Datenbomben, Link-Sperre beim Ausstöpseln
   - Heiß-Sim oder Kalt-Sim, zufälliger Host mit Stufe und ASDF-Attributen
   - Teilnehmerregister wird dekodiert, bis nur der Gewinner übrig ist
-- **Designs für verschiedene Spiele:** Overlay und Timer-Anzeige gibt es in mehreren Designs, jeweils mit eigenem Look (Farben, Schrift, Knotenform) und eigenen Begriffen. Der Würfelablauf bleibt gleich. Auswahl unter *Einstellungen → Design* oder im Dock; „Vorschau“ zeigt einen Demo-Run.
-  - **Shadowrun – Matrix-Run** (Standard): Decker, Marken, IC, Overwatch
-  - **EVE Online – Data-Site:** Kapselpilot hackt eine Site, Zugriff, Verteidigungsknoten, Lokal-Kanal, Gank
-  - **WoW-Stil – Schatzkammer-Raub:** Schurke im Dungeon, Schlösser, Wächter, Aggro, Loot
-  - **Palia-Stil – Schatzsuche im Dorf:** helles Cozy-Design, Hinweise, Hindernisse, Dorftratsch
-  - **Anime – Turm des Schicksals:** Siegel, Schergen, Rivale, Kraft der Freundschaft
+- **Designs für verschiedene Spiele:** Overlay und Timer-Anzeige gibt es in mehreren Designs, jeweils mit eigenem Look (Farben, Schrift, Formen), eigenen Begriffen und einem **eigenen Ablauf**, der zum Spiel passt. Auswahl unter *Einstellungen → Design* oder im Dock; „Vorschau“ zeigt einen Demo-Run.
+  - **Shadowrun – Matrix-Run** (Standard): der Würfel-Run wie oben
+  - **EVE Online – Data-Site:** das Hacking-Minispiel aus EVE: Ein Virus mit Kohärenz und Stärke öffnet Knoten auf einem Sechseck-Raster (Zahlen zeigen die Entfernung zum Systemkern), kämpft gegen Firewall, Anti-Virus, Wiederherstellungsknoten und Virus-Unterdrücker, nutzt Hilfsprogramme (Kernel Rot, Selbstreparatur, Polymorpher Schild, Secondary Vector), knackt den Systemkern; danach fliegt der Loot heraus und wird eingesammelt
+  - **WoW-Stil – Schatzkammer:** der steinerne Wächter stellt ein Rätsel (falsche Antworten lösen Fallen aus), dann Runenschloss und Feuerschalen in der richtigen Reihenfolge; ist die Kammer offen, würfeln alle auf Bedarf (1–100)
+  - **Palia-Stil – Schatzsuche:** helles Cozy-Design mit Dorfkarte: Hinweise einsammeln, das Suchgebiet schrumpft, graben mit Heiß/Kalt-Anzeige, Schatzkiste heben, Lose ziehen
+  - **Anime – Bosskampf:** Verwandlung, Spezialattacken mit Cut-ins, drei Formen des Bosses, die Namen der Teilnehmer laden die Freundschaftsleiste, ultimative Technik, Schicksalskarten
+  - Die Gewinner stehen bei allen Abläufen vorher fair fest; der Ablauf ist nur die Inszenierung.
   - Eigene Designs siehe [Eigene Designs](#eigene-designs)
 - **Mehrere Gewinner:** Die Anzahl ist im Programmfenster, im Dock und unter *Einstellungen → Preise* einstellbar. Gezogen wird ohne Doppelte. Gibt es weniger Teilnehmer als Gewinner, gewinnen alle.
 - **Preise:** eine Beschreibung („Was gibt es zu gewinnen?“) und/oder eine Preisliste. Mit Liste bekommt Gewinner 1 Preis 1, Gewinner 2 Preis 2 usw. (Reihenfolge per ▲/▼); ohne Liste gilt die Beschreibung für alle. Der Preis erscheint im Overlay, in der Timer-Anzeige, im Dock, im Chat und im Verlauf.
@@ -142,6 +143,7 @@ Beim ersten Start legt das Programm neben der .exe den Ordner `themes/` an. Dari
 1. `themes/_vorlage` kopieren und umbenennen, z. B. in `themes/meinspiel` (nur `a–z`, `0–9`, `-`, `_`).
 2. `theme.json` anpassen:
    - `name`, `description`
+   - `game`: der Ablauf – `dice` (Würfel-Run), `datasite` (EVE-Hacking), `treasure` (Schatzsuche), `riddle` (Rätsel und Lootwurf), `battle` (Bosskampf). Alle Texte der Abläufe liegen zum Kopieren in `themes/_ablaeufe/`.
    - `font_url` (Google Fonts)
    - `shape`: Knotenform, eine von `hex`, `ring`, `diamond`, `circle`, `star`
    - `ui`: Beschriftungen von Overlay und Timer
@@ -152,7 +154,7 @@ Beim ersten Start legt das Programm neben der .exe den Ordner `themes/` an. Dari
 
 Alles ist optional, denn fehlende Einträge kommen aus dem Standard-Design. Es reicht also, nur ein paar Texte oder nur die Farben zu ändern. Platzhalter wie `{decker}`, `{host}`, `{n}` oder `{kw}` werden beim Run ersetzt; welche ein Text kennt, steht in der Vorlage. Fehler in eigenen Designs erscheinen im Log.
 
-Ein neues eingebautes Design braucht nur einen Ordner unter `assets/themes/<id>/` und eine Zeile in `BUILTIN` in `src/themes.rs`. Der Test prüft dann automatisch, ob Texte, Platzhalter und Listen vollständig sind.
+Ein neues eingebautes Design braucht nur einen Ordner unter `assets/themes/<id>/` und eine Zeile in `BUILTIN` in `src/themes.rs`. Der Test prüft dann automatisch, ob Texte, Platzhalter und Listen vollständig sind. Ein neuer Ablauf kommt als Modul nach `src/games/`, mit Standardtexten in `assets/games/<ablauf>.json` und einer Darstellung in `assets/overlay.html` (`renderGame`).
 
 ## Bauen
 
@@ -170,6 +172,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 | Datei | Inhalt |
 |---|---|
 | `src/matrix.rs` | Generator für den Matrix-Run (Würfelregeln, Phasen, IC) |
+| `src/games/` + `assets/games/` | Abläufe der Designs (EVE-Data-Site, Schatzsuche, Rätsel, Bosskampf) und ihre Standardtexte |
 | `src/themes.rs` + `assets/themes/` | Designs: Begriffe (`theme.json`) und Look (`theme.css`), eigene Designs aus `themes/` |
 | `src/engine.rs` | Spielablauf, Countdown, Chat-Verarbeitung, Overlay-Status |
 | `src/overlay.rs` + `assets/overlay.html` | Webserver (axum/WebSocket) und OBS-Overlay |
@@ -187,6 +190,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.11 | Jedes Design hat jetzt einen eigenen, zum Spiel passenden Ablauf: EVE – Data-Site hacken wie im Spiel, WoW-Stil – Rätsel, Runenschloss, Feuerschalen und Lootwurf, Palia-Stil – Schatzsuche mit Karte und Graben, Anime – Bosskampf; eigene Designs wählen den Ablauf mit `game` |
 | 0.0.10 | Designs für verschiedene Spiele (Shadowrun, EVE Online, WoW-Stil, Palia-Stil, Anime) mit eigenem Look und eigenen Begriffen für Overlay und Timer-Anzeige; Auswahl im Programm und im Dock, Vorschau; eigene Designs per Ordner `themes/` mit Vorlage |
 | 0.0.9 | Große Teilnahme-Anzeige im Overlay abschaltbar (für die Nutzung mit der Timer-Anzeige); Releases nur noch auf Anforderung |
 | 0.0.8 | Alle Einstellungen und Preise (inkl. EVE-Assets) im OBS-Dock; Start minimiert im Tray mit Tray-Menü, X schließt in den Tray (Windows); Programm-Icon |

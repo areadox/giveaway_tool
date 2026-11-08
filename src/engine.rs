@@ -7,7 +7,7 @@
 use crate::config::{self, Config};
 use crate::db::{clean_login, Db, NewUser};
 use crate::esi;
-use crate::matrix::{self, Frame, RunSetup, RunView};
+use crate::matrix::{Frame, RunSetup, RunView};
 use crate::overlay::OverlayServer;
 use crate::prize::{self, Prize, PrizeView};
 use crate::sound::{self, Sfx};
@@ -685,14 +685,16 @@ impl Engine {
             .collect();
         winners.shuffle(&mut rng);
         let duration = self.cfg.hack_duration.clamp(8.0, 600.0);
-        let frames = matrix::generate(
+        let theme = themes::registry().get(&self.cfg.theme);
+        let frames = crate::games::generate(
+            &theme.info.game,
             &mut rng,
             RunSetup {
                 participants: &self.participants,
                 winners: &winners,
                 decker: &self.cfg.decker(),
                 duration,
-                lexicon: &themes::registry().get(&self.cfg.theme).lexicon,
+                lexicon: &theme.lexicon,
             },
         );
         self.phase = Phase::Running;

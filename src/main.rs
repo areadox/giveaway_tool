@@ -7,6 +7,7 @@ mod config;
 mod db;
 mod engine;
 mod esi;
+mod games;
 mod gui;
 mod matrix;
 mod overlay;

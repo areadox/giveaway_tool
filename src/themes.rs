@@ -45,6 +45,18 @@ const BUILTIN: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Standardtexte je Spielablauf (zwischen Standard-Design und Design gemischt).
+const GAME_JSON: &[(&str, &str)] = &[
+    ("datasite", include_str!("../assets/games/datasite.json")),
+    ("treasure", include_str!("../assets/games/treasure.json")),
+    ("riddle", include_str!("../assets/games/riddle.json")),
+    ("battle", include_str!("../assets/games/battle.json")),
+];
+
+fn game_json(game: &str) -> Option<&'static str> {
+    GAME_JSON.iter().find(|(g, _)| *g == game).map(|(_, j)| *j)
+}
+
 const TEMPLATE_CSS: &str = include_str!("../assets/themes/_vorlage.css");
 const TEMPLATE_README: &str = include_str!("../assets/themes/LIESMICH.txt");
 
@@ -115,6 +127,8 @@ pub struct ThemeInfo {
     pub font_url: String,
     /// Knotenform im Overlay: hex | ring | diamond | circle | star
     pub shape: String,
+    /// Spielablauf: dice | datasite | treasure | riddle | battle
+    pub game: String,
     pub ui: Map<String, Value>,
     pub builtin: bool,
 }
@@ -129,17 +143,29 @@ pub struct Theme {
 fn parse(id: &str, json: &str, css: &str, builtin: bool) -> Result<Theme, String> {
     let base: Value = serde_json::from_str(DEFAULT_JSON).map_err(|e| e.to_string())?;
     let v: Value = serde_json::from_str(json).map_err(|e| format!("theme.json: {e}"))?;
+    let game = v.get("game").and_then(Value::as_str).unwrap_or("dice");
+    if !crate::games::GAMES.contains(&game) {
+        return Err(format!(
+            "unbekannter Ablauf \"{game}\" (möglich: {})",
+            crate::games::GAMES.join(", ")
+        ));
+    }
+    let game_v: Option<Value> = match game_json(game) {
+        Some(j) => Some(serde_json::from_str(j).map_err(|e| format!("Ablauf {game}: {e}"))?),
+        None => None,
+    };
+    let layers: Vec<&Value> = std::iter::once(&base)
+        .chain(game_v.as_ref())
+        .chain([&v])
+        .collect();
     let mut lexicon = Lexicon::default();
-    lexicon.merge(&base);
-    lexicon.merge(&v);
-    let mut ui = base
-        .get("ui")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    if let Some(Value::Object(u)) = v.get("ui") {
-        for (k, val) in u {
-            ui.insert(k.clone(), val.clone());
+    let mut ui = Map::new();
+    for l in &layers {
+        lexicon.merge(l);
+        if let Some(Value::Object(u)) = l.get("ui") {
+            for (k, val) in u {
+                ui.insert(k.clone(), val.clone());
+            }
         }
     }
     let s = |k: &str, d: &str| v.get(k).and_then(Value::as_str).unwrap_or(d).to_string();
@@ -157,6 +183,7 @@ fn parse(id: &str, json: &str, css: &str, builtin: bool) -> Result<Theme, String
             description: s("description", ""),
             font_url: s("font_url", base_font),
             shape,
+            game: game.to_string(),
             ui,
             builtin,
         },
@@ -294,17 +321,28 @@ impl Registry {
 }
 
 /// Legt `themes/_vorlage` (vollständige Vorlage) und `LIESMICH.txt` an, falls nicht vorhanden.
+/// Vorlagen anlegen bzw. ergänzen: `_vorlage/` (Würfel-Run), `_ablaeufe/<ablauf>.json`
+/// (alle Texte je Spielablauf zum Kopieren) und `LIESMICH.txt`. Vorhandenes bleibt.
 fn ensure_template(dir: &Path) {
+    let write_new = |p: PathBuf, content: &str| {
+        if !p.exists() {
+            let _ = std::fs::write(p, content);
+        }
+    };
     let tpl = dir.join("_vorlage");
-    if tpl.exists() {
-        return;
-    }
     if std::fs::create_dir_all(&tpl).is_ok() {
         let json = DEFAULT_JSON.replacen("\"Shadowrun – Matrix-Run\"", "\"Mein Design\"", 1);
-        let _ = std::fs::write(tpl.join("theme.json"), json);
-        let _ = std::fs::write(tpl.join("theme.css"), TEMPLATE_CSS);
-        let _ = std::fs::write(dir.join("LIESMICH.txt"), TEMPLATE_README);
+        write_new(tpl.join("theme.json"), &json);
+        write_new(tpl.join("theme.css"), TEMPLATE_CSS);
     }
+    let games = dir.join("_ablaeufe");
+    if std::fs::create_dir_all(&games).is_ok() {
+        for (g, j) in GAME_JSON {
+            write_new(games.join(format!("{g}.json")), j);
+        }
+    }
+    // Anleitung immer aktuell halten
+    let _ = std::fs::write(dir.join("LIESMICH.txt"), TEMPLATE_README);
 }
 
 #[cfg(test)]
@@ -318,13 +356,42 @@ mod tests {
         let list = reg.list();
         assert_eq!(list[0].0, DEFAULT_ID);
         assert_eq!(list.len(), BUILTIN.len());
-        let std = Lexicon::standard();
         for (id, ..) in BUILTIN {
             let t = reg.get(id);
+            // Vergleich: Standard + Standardtexte des Ablaufs
+            let mut std = Lexicon::standard();
+            let mut std_ui = reg.get(DEFAULT_ID).info.ui.clone();
+            if let Some(j) = game_json(&t.info.game) {
+                let g: Value = serde_json::from_str(j).unwrap();
+                std.merge(&g);
+                if let Some(Value::Object(u)) = g.get("ui") {
+                    std_ui.extend(u.clone());
+                }
+            }
             // Jedes Design hat alle Listen mit sinnvollen Längen
             assert_eq!(t.lexicon.list("nodes").len(), 7, "{id}: 7 Knoten");
-            for l in ["hosts", "sculpts", "decks", "folders"] {
+            let lists: &[&str] = match t.info.game.as_str() {
+                "datasite" => &["sites", "analyzers", "ships"],
+                "treasure" => &["places", "tools", "clues", "events", "finds"],
+                "riddle" => &["dungeons", "riddles", "traps"],
+                "battle" => &[
+                    "arenas",
+                    "bosses",
+                    "boss_lines",
+                    "moves",
+                    "boss_moves",
+                    "ultimates",
+                ],
+                _ => &["hosts", "sculpts", "decks", "folders"],
+            };
+            for l in lists {
                 assert!(!t.lexicon.list(l).is_empty(), "{id}: Liste {l}");
+            }
+            for r in t.lexicon.list("riddles") {
+                assert!(
+                    r.split('|').count() >= 3,
+                    "{id}: Rätsel „{r}“ braucht Frage|Antwort|Falsch…"
+                );
             }
             // Platzhalter in überschriebenen Texten müssen zum Standard passen
             for (k, v) in &t.lexicon.texts {
@@ -342,11 +409,8 @@ mod tests {
                     }
                 }
             }
-            for (k, _) in &t.info.ui {
-                assert!(
-                    reg.get(DEFAULT_ID).info.ui.contains_key(k),
-                    "{id}: unbekannter UI-Schlüssel {k}"
-                );
+            for k in t.info.ui.keys() {
+                assert!(std_ui.contains_key(k), "{id}: unbekannter UI-Schlüssel {k}");
             }
         }
         assert_eq!(reg.get("gibtsnicht").info.id, DEFAULT_ID);
@@ -363,9 +427,24 @@ mod tests {
         )
         .unwrap();
         std::fs::create_dir_all(dir.join("Kaputt Name")).unwrap();
+        std::fs::create_dir_all(dir.join("schatz")).unwrap();
+        std::fs::write(
+            dir.join("schatz/theme.json"),
+            r#"{"name":"Schatz","game":"treasure","texts":{"tr.heat.0":"brrr"}}"#,
+        )
+        .unwrap();
         let (reg, msgs) = Registry::load(Some(dir.clone()));
         assert!(dir.join("_vorlage/theme.json").exists());
         assert!(dir.join("LIESMICH.txt").exists());
+        assert!(dir.join("_ablaeufe/riddle.json").exists());
+        let t2 = reg.get("schatz");
+        assert_eq!(t2.info.game, "treasure");
+        assert_eq!(t2.lexicon.t("tr.heat.0", &[]), "brrr");
+        assert_eq!(
+            t2.lexicon.t("tr.heat.1", &[]),
+            "kalt",
+            "Rest aus dem Ablauf"
+        );
         assert_eq!(msgs.len(), 1, "{msgs:?}");
         let t = reg.get("meinspiel");
         assert_eq!(t.info.name, "Mein Spiel");

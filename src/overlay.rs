@@ -264,7 +264,8 @@ async fn demo(
     } else {
         st.decker.clone()
     };
-    let frames = crate::matrix::generate(
+    let frames = crate::games::generate(
+        &theme.info.game,
         &mut rng,
         crate::matrix::RunSetup {
             participants: &names,

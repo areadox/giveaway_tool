@@ -1,0 +1,94 @@
+{
+  "ui": {
+    "tr_clues": "Hinweise",
+    "tr_stamina": "Ausdauer",
+    "tr_heat": "Spürsinn",
+    "tr_tool": "Werkzeug",
+    "register": "Lose aus der Schatzkiste",
+    "winner_note": "{count} Dorfbewohner haben mitgesucht"
+  },
+  "texts": {
+    "phase.start": "AUFBRUCH",
+    "phase.clues": "HINWEISE",
+    "phase.event": "HUCH!",
+    "phase.dig": "GRABEN",
+    "phase.found": "GEFUNDEN",
+    "phase.fin": "LOSE",
+    "phase.done": "SCHATZ",
+    "tr.pt.start": "{decker} macht sich auf zur Schatzsuche: {host}",
+    "tr.pt.clues": "Hinweise auf der Karte einsammeln",
+    "tr.pt.event": "Da passiert etwas …",
+    "tr.pt.dig": "Hier irgendwo muss er sein – graben!",
+    "tr.pt.found": "Die Schaufel stößt auf Holz!",
+    "fin.start": "Die Kiste ist voller Lose!",
+    "fin.left1": "Lose ziehen … 1 Los übrig",
+    "fin.left": "Lose ziehen … {n} Lose übrig",
+    "pt.done": "Schatz gehoben – was für ein Tag!",
+    "tr.log.start": "{decker} packt {tool} ein und zieht los",
+    "tr.log.clue": "Hinweis {n}/3: „{clue}“ – {dir}",
+    "tr.log.clues_done": "Alle Hinweise beisammen – das Suchgebiet ist klein",
+    "tr.log.dig": "Gefunden: {item} … {heat}",
+    "tr.log.found": "SCHATZKISTE GEFUNDEN!",
+    "tr.log.open": "Der Deckel knarzt – die Kiste geht auf",
+    "log.register": "{n} Lose liegen in der Kiste",
+    "log.win1": "SCHATZ GEFUNDEN // Gewinner: {list}",
+    "log.winN": "SCHATZ GEFUNDEN // {n} Gewinner: {list}",
+    "tr.dir.n": "irgendwo nördlich",
+    "tr.dir.ne": "Richtung Nordosten",
+    "tr.dir.e": "weiter östlich",
+    "tr.dir.se": "Richtung Südosten",
+    "tr.dir.s": "irgendwo südlich",
+    "tr.dir.sw": "Richtung Südwesten",
+    "tr.dir.w": "weiter westlich",
+    "tr.dir.nw": "Richtung Nordwesten",
+    "tr.heat.0": "eiskalt",
+    "tr.heat.1": "kalt",
+    "tr.heat.2": "lauwarm",
+    "tr.heat.3": "warm!",
+    "tr.heat.4": "heiß!",
+    "tr.heat.5": "GEFUNDEN!"
+  },
+  "lists": {
+    "places": [
+      "Kilima-Dorfplatz",
+      "Bahari-Bucht",
+      "Alte Mühle am Bach",
+      "Leuchtturm an der Klippe",
+      "Gemeinschaftsgarten",
+      "Elderwood-Hain"
+    ],
+    "tools": [
+      "die Glücksschaufel",
+      "den Messing-Spaten",
+      "Omas alten Kompass",
+      "den Picknickrucksack",
+      "die Lieblings-Gießkanne"
+    ],
+    "clues": [
+      "Wo die Enten schlafen, ist es nicht",
+      "Folge dem Duft der Kirschblüten",
+      "Drei Schritte hinter dem krummen Baum",
+      "Wo der Abendschatten am längsten ist",
+      "Die Bienen wissen mehr, als sie summen",
+      "Unter dem Stein, der wie ein Brot aussieht",
+      "Wo die Laterne nachts zuerst leuchtet"
+    ],
+    "events": [
+      "crow|Eine freche Krähe schnappt nach dem Hinweis – {decker} hält ihn fest!",
+      "rain|Ein kurzer Regenschauer – alle stellen sich unter",
+      "bees|Bienen! {decker} macht einen großen Bogen",
+      "neighbor|Ein neugieriger Nachbar fragt, was {decker} da sucht",
+      "cat|Eine Katze legt sich mitten auf die Karte"
+    ],
+    "finds": [
+      "einen alten Stiefel",
+      "einen Regenwurm",
+      "eine Muschel",
+      "einen glänzenden Kiesel",
+      "eine verlorene Münze",
+      "eine Karotte",
+      "einen Knopf",
+      "eine rostige Gabel"
+    ]
+  }
+}

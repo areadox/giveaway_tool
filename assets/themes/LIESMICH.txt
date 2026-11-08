@@ -15,6 +15,12 @@ So geht's:
 theme.json
 -----------
   "name"        Anzeigename in der Auswahl
+  "game"        Ablauf des Giveaways (was im Overlay passiert):
+                  dice      Matrix-Run mit Würfeln (Shadowrun, Standard)
+                  datasite  Data-Site hacken wie in EVE Online
+                  treasure  Schatzsuche mit Karte und Graben (Palia-Stil)
+                  riddle    Rätsel, Runenschloss, Feuerschalen, Lootwurf (WoW-Stil)
+                  battle    Bosskampf mit Spezialattacken (Anime)
   "description" kurze Beschreibung
   "font_url"    Google-Fonts-Link (Schrift auch in theme.css bei --font eintragen)
   "shape"       Form der Knoten: hex | ring | diamond | circle | star
@@ -27,7 +33,15 @@ theme.json
                   demo_names Fantasienamen für den Demo-Modus (optional)
                   demo_prizes Beispielpreise für den Demo-Modus (optional)
 
-Alles ist optional: Was fehlt, kommt aus dem Standard-Design (Shadowrun).
+Alles ist optional: Was fehlt, kommt aus dem Standard-Design (Shadowrun)
+bzw. aus den Standardtexten des gewählten Ablaufs.
+
+Die Vorlage "_vorlage" ist für den Würfel-Ablauf. Für die anderen Abläufe
+liegen alle Texte, Beschriftungen und Listen im Ordner "_ablaeufe"
+(z. B. _ablaeufe/treasure.json). Einfach "game" setzen und nur die Einträge
+aus dieser Datei in die eigene theme.json kopieren, die anders sein sollen.
+Rätsel stehen als "Frage|richtige Antwort|falsch|falsch|falsch" in "riddles",
+Ereignisse als "art|Text" in "events" bzw. "traps".
 Man kann also auch nur ein paar Texte oder nur die Farben ändern.
 
 Platzhalter in geschweiften Klammern werden beim Run ersetzt, z. B.

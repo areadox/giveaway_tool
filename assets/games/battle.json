@@ -1,0 +1,84 @@
+{
+  "ui": {
+    "bt_hp": "HP",
+    "bt_combo": "Combo",
+    "bt_power": "Freundschaft",
+    "register": "Die Schicksalskarten",
+    "winner_note": "{count} Mitstreiter haben ihre Kraft geschickt"
+  },
+  "texts": {
+    "phase.transform": "VERWANDLUNG",
+    "phase.appear": "DER BOSS",
+    "phase.fight": "KAMPF",
+    "phase.power": "FREUNDSCHAFT",
+    "phase.ult": "ULTIMATIV",
+    "phase.fin": "SCHICKSAL",
+    "phase.done": "SIEG",
+    "bt.pt.transform": "{decker} verwandelt sich!",
+    "bt.pt.appear": "{boss} stellt sich {decker} entgegen!",
+    "bt.pt.fight": "Kampf – Form {n}",
+    "bt.pt.power": "Alle schicken {decker} ihre Kraft!",
+    "bt.pt.ult": "Die ultimative Technik!",
+    "fin.start": "Die Schicksalskarten drehen sich …",
+    "fin.left1": "Das Schicksal wählt … 1 Karte übrig",
+    "fin.left": "Das Schicksal wählt … {n} Karten übrig",
+    "pt.done": "Sieg! – Fortsetzung folgt …",
+    "bt.cut.transform": "MACHT DER STERNE – VERWANDLUNG!",
+    "bt.cut.form2": "Das … war noch nicht mal meine wahre Form!",
+    "bt.cut.form3": "Jetzt zeige ich dir meine FINALE FORM!",
+    "bt.log.transform": "Lichtsäule! {decker} ist bereit zum Kampf",
+    "bt.log.appear": "{boss}: „{line}“",
+    "bt.log.attack": "{move}! −{n} HP für {boss}",
+    "bt.log.crit": "KRITISCH! {move}! −{n} HP für {boss}",
+    "bt.log.form": "{boss} verwandelt sich – Form {n}!",
+    "bt.log.dodge": "{move} – nur ein Nachbild! Ausgewichen",
+    "bt.log.hit": "{boss}: {move}! −{n} HP",
+    "bt.log.power": "{n} Mitstreiter schicken ihre Kraft!",
+    "bt.log.ult": "ULTIMATIVE TECHNIK: {move}!",
+    "bt.log.ko": "{boss} ist besiegt!",
+    "log.register": "{n} Schicksalskarten liegen bereit",
+    "log.win1": "SIEG // Auserwählt: {list}",
+    "log.winN": "SIEG // {n} Auserwählte: {list}"
+  },
+  "lists": {
+    "arenas": [
+      "Turm des Schicksals",
+      "Akademie der Sterne",
+      "Schloss im Wolkenmeer",
+      "Schrein der tausend Tore",
+      "Neo-Arkade 2099"
+    ],
+    "bosses": [
+      "Schattenkaiser Kurogane",
+      "Die Mondhexe Yoru",
+      "General Raijin",
+      "Der Dämonenfürst Akuma",
+      "Königin der Dornen"
+    ],
+    "boss_lines": [
+      "Du kommst zu spät, Held!",
+      "Deine Freunde können dich nicht retten!",
+      "Endlich ein würdiger Gegner …",
+      "Ich habe auf diesen Moment gewartet!"
+    ],
+    "moves": [
+      "STERNENSCHLAG",
+      "KIRSCHBLÜTENWIRBEL",
+      "DONNERFAUST",
+      "MONDSICHELKLINGE",
+      "KOMETENTRITT",
+      "HERZENSSTRAHL"
+    ],
+    "boss_moves": [
+      "Schattenwelle",
+      "Dornenregen",
+      "Höllenfeuer",
+      "Dunkler Blitz"
+    ],
+    "ultimates": [
+      "STERNENSCHWUR – UNENDLICHER HIMMEL",
+      "KRAFT DER FREUNDSCHAFT – FINALER STRAHL",
+      "TAUSEND KIRSCHBLÜTEN – LETZTER TANZ"
+    ]
+  }
+}

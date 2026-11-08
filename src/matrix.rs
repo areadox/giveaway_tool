@@ -73,10 +73,18 @@ pub struct Candidate {
     pub name: String,
     /// "offen" | "raus" | "gewinner"
     pub state: String,
+    /// Zusatzwert für die Anzeige (z. B. Lootwurf 1–100)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunView {
+    /// Ablauf: "dice" (Matrix-Run) | "datasite" | "treasure" | "riddle" | "battle"
+    pub game: String,
+    /// Spielspezifischer Zustand (nur bei anderen Abläufen als "dice")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene: Option<serde_json::Value>,
     pub host: String,
     pub host_sculpt: String,
     pub host_rating: u8,
@@ -1151,6 +1159,7 @@ impl<'a, R: Rng> Gen<'a, R> {
             .map(|n| Candidate {
                 name: n.clone(),
                 state: "offen".into(),
+                value: None,
             })
             .collect();
         let t = self.tx("log.register", &[("n", participants.len().to_string())]);
@@ -1280,6 +1289,8 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
     let host_sculpt = pick(rng, "sculpts");
     let deck = pick(rng, "decks");
     let v = RunView {
+        game: "dice".into(),
+        scene: None,
         host,
         host_sculpt,
         host_rating: r as u8,
@@ -1380,17 +1391,21 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
     g.log(t, "good");
     g.push(0.0, Some(Sfx::Win1));
 
-    // Zeitachse auf die gewünschte Dauer skalieren
-    let duration = s.duration.max(8.0);
-    let n = g.frames.len();
-    let total: f64 = g.frames[..n - 1]
+    timeline(g.frames, s.duration)
+}
+
+/// Skaliert die gewichteten Bilder auf die gewünschte Dauer; das letzte Bild liegt genau am Ende.
+pub(crate) fn timeline(frames: Vec<(f64, RunView, Option<Sfx>)>, duration: f64) -> Vec<Frame> {
+    let duration = duration.max(8.0);
+    let n = frames.len();
+    let total: f64 = frames[..n.saturating_sub(1)]
         .iter()
         .map(|f| f.0)
         .sum::<f64>()
         .max(0.001);
     let mut out = Vec::with_capacity(n);
     let mut cum = 0.0;
-    for (i, (w, mut view, sfx)) in g.frames.into_iter().enumerate() {
+    for (i, (w, mut view, sfx)) in frames.into_iter().enumerate() {
         let t = if i == n - 1 {
             duration
         } else {
@@ -1405,6 +1420,50 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
         cum += w;
     }
     out
+}
+
+impl RunView {
+    /// Leerer Zustand für Abläufe ohne Würfel-Charakterbogen.
+    pub(crate) fn blank(game: &str, decker: &str, participants: usize) -> Self {
+        RunView {
+            game: game.into(),
+            scene: None,
+            host: String::new(),
+            host_sculpt: String::new(),
+            host_rating: 0,
+            asdf: [0; 4],
+            decker: decker.to_uppercase(),
+            deck: String::new(),
+            sim: String::new(),
+            hot: false,
+            os: 0,
+            os_max: OS_MAX,
+            marks: 0,
+            matrix_cm: 0,
+            matrix_max: 0,
+            stun: 0,
+            stun_max: 0,
+            edge: 0,
+            edge_max: 0,
+            alert: "none".into(),
+            link_locked: false,
+            combat_turn: 0,
+            ice: vec![],
+            nodes: vec![],
+            node: 0,
+            phase: String::new(),
+            phase_key: "init".into(),
+            phase_text: String::new(),
+            roll: None,
+            log: vec![],
+            candidates: vec![],
+            participants,
+            winners: vec![],
+            converged: false,
+            overall: 0.0,
+            done: false,
+        }
+    }
 }
 
 #[cfg(test)]

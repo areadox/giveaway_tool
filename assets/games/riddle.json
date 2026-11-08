@@ -1,0 +1,70 @@
+{
+  "ui": {
+    "rd_guardian": "Der Wächter fragt:",
+    "rd_riddle": "Rätsel",
+    "rd_seals": "Siegel",
+    "rd_hp": "Lebenspunkte",
+    "rd_runes": "Runenschloss",
+    "rd_braziers": "Feuerschalen",
+    "rd_order": "Das Flüstern verrät die Reihenfolge:",
+    "rd_roll": "Bedarf",
+    "register": "Wurf um den Loot",
+    "winner_note": "{count} Abenteurer haben gewürfelt"
+  },
+  "texts": {
+    "phase.enter": "EINGANG",
+    "phase.riddle": "RÄTSEL",
+    "phase.runes": "RUNENSCHLOSS",
+    "phase.braziers": "FEUERSCHALEN",
+    "phase.door": "SCHATZKAMMER",
+    "phase.fin": "BEDARF!",
+    "phase.done": "LOOT",
+
+    "rd.pt.enter": "{decker} steht vor dem Tor: {host}",
+    "rd.pt.riddle": "Der steinerne Wächter erwacht und stellt ein Rätsel",
+    "rd.pt.runes": "Die Runen müssen zum Siegel passen",
+    "rd.pt.braziers": "Die Feuerschalen in der richtigen Reihenfolge entzünden",
+    "rd.pt.door": "Das Tor der Schatzkammer öffnet sich!",
+    "fin.start": "Alle würfeln auf Bedarf!",
+    "fin.left1": "Die Würfel sind gefallen … 1 Abenteurer übrig",
+    "fin.left": "Die Würfel sind gefallen … {n} Abenteurer übrig",
+    "pt.done": "Loot verteilt – Raid abgeschlossen",
+
+    "rd.log.enter": "Fackeln flackern auf – {host}",
+    "rd.log.riddle": "Der Wächter spricht: „{q}“",
+    "rd.log.guess": "{decker} antwortet: „{a}“",
+    "rd.log.wrong": "Falsch! Die Augen des Wächters glühen rot",
+    "rd.log.trap": "{trap} (−{n} Leben)",
+    "rd.log.right": "Richtig! Das erste Siegel zerbricht",
+    "rd.log.runes": "Fünf Runenräder knirschen im Stein",
+    "rd.log.overturn": "Eins zu weit gedreht – zurück!",
+    "rd.log.rune": "Rune {n} rastet ein",
+    "rd.log.runes_done": "Das Runenschloss gibt nach – zweites Siegel gebrochen",
+    "rd.log.whisper": "Ein Flüstern verrät die Reihenfolge der Feuerschalen",
+    "rd.log.wrong_order": "Falsche Reihenfolge – alle Flammen erlöschen!",
+    "rd.log.braziers_done": "Alle Schalen brennen – drittes Siegel gebrochen",
+    "rd.log.door": "Das Tor schwingt auf – Gold glitzert im Fackelschein",
+    "log.register": "{n} Abenteurer würfeln um den Loot",
+    "log.win1": "EPISCHES LOOT // Gewinner: {list}",
+    "log.winN": "EPISCHES LOOT // {n} Gewinner: {list}"
+  },
+  "lists": {
+    "dungeons": ["Gruft der Goldenen Krone", "Schatzkammer von Eisenfaust", "Die Versunkenen Hallen", "Turm des Schattenmagiers", "Bastion des Drachenbanns", "Gewölbe des Silbernen Ordens"],
+    "riddles": [
+      "Je mehr du davon machst, desto mehr lässt du zurück.|Schritte|Gold|Zeit|Atem",
+      "Ich habe Städte, aber keine Häuser, Wälder, aber keine Bäume, Wasser, aber keine Fische.|eine Landkarte|ein Traum|ein Spiegel|ein Gemälde",
+      "Was wird nass, während es trocknet?|ein Handtuch|ein Fluss|eine Wolke|ein Krug",
+      "Ich spreche ohne Mund und höre ohne Ohren. Der Wind erweckt mich.|ein Echo|ein Geist|eine Glocke|ein Lied",
+      "Es hat Zähne, doch es beißt nie.|ein Kamm|ein Wolf|ein Drache|ein Hai",
+      "Was hat einen Hals, aber keinen Kopf?|eine Flasche|ein Schwan|ein Ritter|eine Giraffe",
+      "Je mehr davon da ist, desto weniger siehst du.|Dunkelheit|Licht|Gold|Fackeln",
+      "Wer es macht, sagt es nicht. Wer es nimmt, kennt es nicht. Wer es kennt, nimmt es nicht.|Falschgeld|ein Geheimnis|Gift|ein Fluch"
+    ],
+    "traps": [
+      "fire|Flammen schießen aus den Wänden!",
+      "darts|Giftpfeile zischen aus den Fugen!",
+      "frost|Eisiger Nebel kriecht über den Boden!",
+      "rocks|Steine poltern von der Decke!"
+    ]
+  }
+}
