@@ -190,6 +190,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.12 | Mehr Animation in den Spiel-Abläufen: Partikel, bewegte Hintergründe (Sterne, Wolken, Fackeln, Blütenblätter), fließende Übergänge; EVE mit Virus-Orb, Treffern, Blitzen und Loot-Spew, Palia mit laufender Figur, Grab-Animation und aufspringender Kiste, WoW mit sprechendem Wächter, drehenden Runenrädern, Flammen und Tor, Anime mit Angriffen, Projektilen, Strahl und K.O.; Overlay ohne `color-mix()` (ältere OBS-Versionen) |
 | 0.0.11 | Jedes Design hat jetzt einen eigenen, zum Spiel passenden Ablauf: EVE – Data-Site hacken wie im Spiel, WoW-Stil – Rätsel, Runenschloss, Feuerschalen und Lootwurf, Palia-Stil – Schatzsuche mit Karte und Graben, Anime – Bosskampf; eigene Designs wählen den Ablauf mit `game` |
 | 0.0.10 | Designs für verschiedene Spiele (Shadowrun, EVE Online, WoW-Stil, Palia-Stil, Anime) mit eigenem Look und eigenen Begriffen für Overlay und Timer-Anzeige; Auswahl im Programm und im Dock, Vorschau; eigene Designs per Ordner `themes/` mit Vorlage |
 | 0.0.9 | Große Teilnahme-Anzeige im Overlay abschaltbar (für die Nutzung mit der Timer-Anzeige); Releases nur noch auf Anforderung |
