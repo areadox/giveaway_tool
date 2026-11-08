@@ -1,0 +1,29 @@
+/* Anime – knallige Farben, Speedlines, comicartige Überschriften. */
+:root{
+  --ink:#1a1033; --ink2:#251747; --line:#5b3fa0;
+  --text:#fff6fb; --muted:#c9b6ea;
+  --decker:#38d6ff; --host:#ff4d8d; --glitch:#ff6a3d; --edge:#ffe14d; --gold:#ffd23f;
+  --font:"M PLUS Rounded 1c","Segoe UI",sans-serif;
+  --font-head:"Bangers","M PLUS Rounded 1c",sans-serif;
+  --panel-bg:linear-gradient(150deg,rgba(43,26,92,.94),rgba(26,16,51,.93));
+  --panel-border:3px solid #1a1033;
+  --panel-radius:14px;
+  --panel-shadow:0 0 0 2px var(--host),6px 6px 0 rgba(26,16,51,.85);
+  --panel-pattern:repeating-conic-gradient(from 0deg at 100% 0%,rgba(255,255,255,.05) 0 2deg,transparent 2deg 9deg);
+  --chip-pattern:repeating-conic-gradient(from 0deg at 0% 50%,rgba(255,255,255,.06) 0 2deg,transparent 2deg 10deg);
+  --winner-bg:radial-gradient(circle at 50% 40%,rgba(255,77,141,.35),transparent 60%),rgba(26,16,51,.97);
+  --portrait-overlay:radial-gradient(circle at 30% 20%,rgba(255,255,255,.25),transparent 35%);
+  --die-bg:#ffffff; --die-pip:#1a1033; --die-radius:9px;
+  --track:#3a2670; --box-line:#8a6fd0;
+  --node-fill:rgba(26,16,51,.96); --node-locked:#4e3a86; --node-label-locked:#8a75c4;
+  --tag-radius:8px;
+}
+.hostname,.open h1,.announce,.verdict .v,.winner strong,.winner small,.phase em,.value{letter-spacing:.05em}
+.hostname,.open h1,.winner strong{text-shadow:3px 3px 0 var(--ink)}
+.open h1{font-size:clamp(34px,3.6vw,56px)}
+.verdict .v{font-size:clamp(26px,2.4vw,38px);text-shadow:2px 2px 0 var(--ink)}
+.winner{border:3px solid var(--gold);box-shadow:0 0 0 3px var(--ink),0 0 70px rgba(255,77,141,.55)}
+.winner strong{color:var(--gold)}
+.edgepts i{border-radius:0;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);border:0;background:var(--line)}
+.edgepts i.on{background:var(--edge)}
+.marks i{border-radius:50%;transform:none}

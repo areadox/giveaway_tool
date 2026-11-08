@@ -1,0 +1,49 @@
+/* ==========================================================================
+   Vorlage für ein eigenes Design – Farben, Schrift und Rahmen.
+   Alle Werte sind optional: was hier fehlt, kommt aus dem Standard-Design.
+   Datei als theme.css in den eigenen Design-Ordner legen.
+   ========================================================================== */
+:root{
+  /* Grundfarben */
+  --ink:#0e0b26;        /* dunkelster Ton (Text auf hellen Flächen, Knoten-Innenfläche) */
+  --ink2:#161238;       /* Hintergrund für Bilder/Karten */
+  --line:#3a3170;       /* Rahmen und Trennlinien */
+  --text:#e8e3ff;       /* normaler Text */
+  --muted:#9a93c9;      /* Nebentext */
+
+  /* Rollen */
+  --decker:#2ee6c5;     /* „gute Seite“: Spieler, Erfolge, erledigte Knoten */
+  --host:#ff3fa4;       /* Gegner: Host, IC, Alarm */
+  --glitch:#ff5a36;     /* Patzer, Gefahr */
+  --edge:#a58bff;       /* Edge/Glück */
+  --gold:#ffd166;       /* Preis, Gewinner, Countdown */
+
+  /* Schrift – passende Google-Font in theme.json unter "font_url" eintragen */
+  --font:"Chakra Petch","Bahnschrift","Segoe UI",sans-serif;
+  --font-head:var(--font);   /* Überschriften, Gewinnername, Uhr */
+
+  /* Flächen */
+  --panel-bg:linear-gradient(160deg,rgba(22,18,56,.93),rgba(14,11,38,.9));
+  --panel-border:1px solid var(--line);
+  --panel-radius:4px;
+  --panel-shadow:none;
+  --panel-pattern:none;      /* Muster über den Panels im Overlay */
+  --chip-pattern:none;       /* Muster in der Timer-Anzeige */
+  --winner-bg:rgba(14,11,38,.97);
+  --portrait-overlay:none;   /* z. B. Scanlines über dem Porträt */
+
+  /* Würfel */
+  --die-bg:#efeaff; --die-pip:#2a2450; --die-radius:6px;
+
+  /* Leisten, Kästchen, Knoten */
+  --track:#251f52;           /* leere Leiste (Overwatch, Timer) */
+  --box-line:#6b62a8;        /* Kästchen der Zustandsmonitore */
+  --node-fill:rgba(14,11,38,.95);
+  --node-locked:#4a437f;
+  --node-label-locked:#6b62a8;
+  --tag-radius:2px;          /* Ecken von Badges, Namen, Kästchen */
+}
+
+/* Darunter sind beliebige weitere CSS-Regeln erlaubt, z. B.:
+   .winner{border-width:3px}
+   body[data-theme="meinspiel"] .hostname{letter-spacing:.1em}          */

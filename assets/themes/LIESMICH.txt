@@ -1,0 +1,46 @@
+EIGENE DESIGNS FÜR CYBER GIVEAWAY
+=================================
+
+Hier liegen eigene Designs für das OBS-Overlay und die Timer-Anzeige.
+Jeder Unterordner ist ein Design. Der Ordnername ist die ID
+(nur a–z, 0–9, - und _; Ordner, die mit _ beginnen, werden ignoriert).
+
+So geht's:
+  1. Den Ordner "_vorlage" kopieren und umbenennen, z. B. "meinspiel".
+  2. In meinspiel/theme.json Namen und Texte anpassen.
+  3. In meinspiel/theme.css Farben und Schrift anpassen.
+  4. Im Programm (Einstellungen → Design) oder im Dock auf
+     "Designs neu laden" klicken und das Design auswählen.
+
+theme.json
+-----------
+  "name"        Anzeigename in der Auswahl
+  "description" kurze Beschreibung
+  "font_url"    Google-Fonts-Link (Schrift auch in theme.css bei --font eintragen)
+  "shape"       Form der Knoten: hex | ring | diamond | circle | star
+  "ui"          Beschriftungen im Overlay und in der Timer-Anzeige
+  "texts"       alle Texte des Runs (Phasen, Würfe, Log-Zeilen, Ergebnisse)
+  "lists"       Zufallslisten:
+                  nodes      genau 7 Stationen des Runs (Einstieg … Ausstieg)
+                  hosts      Ziele, sculpts  Beschreibungen der Ziele
+                  decks      Ausrüstung,   folders  Fundorte der Gewinnerdatei
+                  demo_names Fantasienamen für den Demo-Modus (optional)
+                  demo_prizes Beispielpreise für den Demo-Modus (optional)
+
+Alles ist optional: Was fehlt, kommt aus dem Standard-Design (Shadowrun).
+Man kann also auch nur ein paar Texte oder nur die Farben ändern.
+
+Platzhalter in geschweiften Klammern werden beim Run ersetzt, z. B.
+{decker} (Name des Streamers), {host} (Ziel), {ice} (Gegner), {n} (Zahl),
+{os}/{max} (Alarmwert), {kw} (Schlüsselwort), {prize} (Preis).
+Welche Platzhalter ein Text kennt, steht in der Vorlage im selben Text.
+{decker} und {host} gehen in jedem Run-Text.
+
+theme.css
+---------
+Überschreibt die Farb- und Formvariablen (siehe Kommentare in der Vorlage).
+Darunter dürfen beliebige weitere CSS-Regeln stehen.
+
+Vorschau ohne laufendes Giveaway:
+  http://localhost:8766/test?theme=meinspiel
+  http://localhost:8766/timer?demo=1&theme=meinspiel

@@ -58,6 +58,8 @@ pub struct Config {
     /// Große Teilnahme-Anzeige („Host-Zugang offen“) im Overlay zeigen.
     /// Aus, wenn die kleine Timer-Anzeige (/timer) genutzt wird.
     pub overlay_show_open: bool,
+    /// Design für Overlay und Timer-Anzeige (Ordnername, z. B. "shadowrun", "eve").
+    pub theme: String,
     /// Unbekannte Schlüssel bleiben beim Speichern erhalten.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -98,6 +100,7 @@ impl Default for Config {
             start_in_tray: true,
             close_to_tray: true,
             overlay_show_open: true,
+            theme: crate::themes::DEFAULT_ID.into(),
             decker_name: String::new(),
             extra: Map::new(),
         }

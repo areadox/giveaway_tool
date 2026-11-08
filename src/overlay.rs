@@ -88,6 +88,8 @@ impl OverlayServer {
                         .route("/", get(index))
                         .route("/test", get(index))
                         .route("/timer", get(timer))
+                        .route("/api/theme", get(theme_info))
+                        .route("/theme/{file}", get(theme_css))
                         .route("/ws", get(ws_handler))
                         .route("/api/demo", get(demo))
                         .route("/dock", get(dock_page))
@@ -174,9 +176,52 @@ async fn timer() -> impl IntoResponse {
     ([("Cache-Control", "no-store")], Html(TIMER_HTML))
 }
 
+/// Design aus `?theme=` oder – ohne Angabe – das eingestellte Design (aus dem Overlay-Status).
+fn pick_theme(st: &AppState, q: Option<&str>) -> std::sync::Arc<crate::themes::Theme> {
+    let id = match q.filter(|s| !s.is_empty()) {
+        Some(id) => id.to_string(),
+        None => serde_json::from_str::<serde_json::Value>(&st.rx.borrow())
+            .ok()
+            .and_then(|v| v.get("theme").and_then(|t| t.as_str()).map(str::to_string))
+            .unwrap_or_default(),
+    };
+    crate::themes::registry().get(&id)
+}
+
+#[derive(serde::Deserialize)]
+struct ThemeQuery {
+    id: Option<String>,
+}
+
+/// Beschriftungen, Form und Schrift eines Designs (für Overlay und Timer).
+async fn theme_info(
+    State(st): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<ThemeQuery>,
+) -> impl IntoResponse {
+    let t = pick_theme(&st, q.id.as_deref());
+    ([("Cache-Control", "no-store")], Json(t.info.clone()))
+}
+
+/// `/theme/<id>.css` – Farben und Formen des Designs.
+async fn theme_css(axum::extract::Path(file): axum::extract::Path<String>) -> Response {
+    let Some(id) = file.strip_suffix(".css") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let t = crate::themes::registry().get(id);
+    (
+        [
+            ("Content-Type", "text/css; charset=utf-8"),
+            ("Cache-Control", "no-store"),
+        ],
+        t.css.clone(),
+    )
+        .into_response()
+}
+
 #[derive(serde::Deserialize)]
 struct DemoQuery {
     winners: Option<usize>,
+    theme: Option<String>,
 }
 
 /// Demo-Run mit Fantasienamen; `?winners=3` zeigt mehrere Gewinner mit Beispielpreisen.
@@ -185,7 +230,9 @@ async fn demo(
     axum::extract::Query(q): axum::extract::Query<DemoQuery>,
 ) -> impl IntoResponse {
     use rand::seq::SliceRandom;
-    let names: Vec<String> = [
+    let theme = pick_theme(&st, q.theme.as_deref());
+    let lx = &theme.lexicon;
+    let mut names: Vec<String> = [
         "netghost",
         "chromefox",
         "datawitch",
@@ -206,6 +253,9 @@ async fn demo(
     .iter()
     .map(|s| s.to_string())
     .collect();
+    if lx.list("demo_names").len() >= 4 {
+        names = lx.list("demo_names").to_vec();
+    }
     let n = q.winners.unwrap_or(1).clamp(1, names.len());
     let mut rng = rand::thread_rng();
     let winners: Vec<String> = names.choose_multiple(&mut rng, n).cloned().collect();
@@ -221,6 +271,7 @@ async fn demo(
             winners: &winners,
             decker: &decker,
             duration: 30.0,
+            lexicon: lx,
         },
     );
     // Beispielpreise mit echten EVE-Typ-IDs (für die Item-Icons)
@@ -231,17 +282,31 @@ async fn demo(
         ("Nanite Repair Paste", 1500, 28668),
         ("Rifter", 3, 587),
     ];
-    let prizes: Vec<crate::prize::Prize> = samples
-        .iter()
-        .cycle()
-        .take(n)
-        .map(|(name, q, t)| crate::prize::Prize {
-            name: (*name).into(),
-            quantity: *q,
-            type_id: Some(*t),
-            ..Default::default()
-        })
-        .collect();
+    // Designs ohne EVE-Bezug bringen eigene Beispielpreise mit (ohne Icons)
+    let own = lx.list("demo_prizes");
+    let prizes: Vec<crate::prize::Prize> = if own.is_empty() {
+        samples
+            .iter()
+            .cycle()
+            .take(n)
+            .map(|(name, q, t)| crate::prize::Prize {
+                name: (*name).into(),
+                quantity: *q,
+                type_id: Some(*t),
+                ..Default::default()
+            })
+            .collect()
+    } else {
+        own.iter()
+            .cycle()
+            .take(n)
+            .map(|name| crate::prize::Prize {
+                name: name.clone(),
+                quantity: 1,
+                ..Default::default()
+            })
+            .collect()
+    };
     let list: Vec<serde_json::Value> = winners
         .iter()
         .enumerate()

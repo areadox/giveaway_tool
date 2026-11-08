@@ -4,6 +4,7 @@ use crate::config::Config;
 use crate::db::{HistoryRow, NewUser, User};
 use crate::engine::{Engine, Phase, Tone};
 use crate::prize::{fmt_qty, type_icon_url, Prize};
+use crate::themes;
 use eframe::egui::{self, Color32, RichText, Stroke};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -714,7 +715,7 @@ impl GuiApp {
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE.fill(BG).inner_margin(12.0))
                     .show(ctx, |ui| match st.tab {
-                        Tab::General => general_tab(ui, st),
+                        Tab::General => general_tab(ui, st, &engine),
                         Tab::Messages => messages_tab(ui, st),
                         Tab::Prizes => prizes_tab(ui, st, &engine),
                         Tab::Database => database_tab(ui, st, &engine),
@@ -844,7 +845,69 @@ fn field(ui: &mut egui::Ui, label: &str, value: &mut String, password: bool, hin
     ui.end_row();
 }
 
-fn general_tab(ui: &mut egui::Ui, st: &mut Settings) {
+/// Design-Auswahl mit Vorschau, Neu-Laden und Ordner für eigene Designs.
+fn theme_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
+    let reg = themes::registry();
+    let list = reg.list();
+    ui.label(RichText::new("Design").color(CYAN))
+        .on_hover_text("Look und Begriffe von Overlay und Timer-Anzeige");
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            let current = reg.get(&st.draft.theme);
+            egui::ComboBox::from_id_salt("theme")
+                .selected_text(&current.info.name)
+                .width(260.0)
+                .show_ui(ui, |ui| {
+                    for (id, name, builtin) in &list {
+                        let label = if *builtin {
+                            name.clone()
+                        } else {
+                            format!("{name}  (eigenes)")
+                        };
+                        ui.selectable_value(&mut st.draft.theme, id.clone(), label);
+                    }
+                });
+            let port = st.port.trim().parse::<u16>().unwrap_or(8766);
+            if ui
+                .button("Vorschau")
+                .on_hover_text("Demo-Run in diesem Design im Browser öffnen")
+                .clicked()
+            {
+                let id = reg.get(&st.draft.theme).info.id.clone();
+                let _ = open::that(format!("http://localhost:{port}/test?theme={id}"));
+            }
+        });
+        let desc = &reg.get(&st.draft.theme).info.description;
+        if !desc.is_empty() {
+            ui.label(RichText::new(desc).color(DIM).size(11.0));
+        }
+        ui.horizontal(|ui| {
+            if ui
+                .small_button("Designs neu laden")
+                .on_hover_text("Eigene Designs aus dem Ordner „themes“ neu einlesen")
+                .clicked()
+            {
+                if let Ok(mut e) = engine.lock() {
+                    e.reload_themes();
+                }
+            }
+            if let Some(dir) = reg.dir() {
+                let dir = dir.to_path_buf();
+                if ui
+                    .small_button("Ordner für eigene Designs")
+                    .on_hover_text(dir.display().to_string())
+                    .clicked()
+                {
+                    let _ = std::fs::create_dir_all(&dir);
+                    let _ = open::that(dir);
+                }
+            }
+        });
+    });
+    ui.end_row();
+}
+
+fn general_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         egui::Grid::new("general").num_columns(2).spacing([14.0, 10.0]).min_col_width(220.0).show(ui, |ui| {
             let d = &mut st.draft;
@@ -868,6 +931,8 @@ fn general_tab(ui: &mut egui::Ui, st: &mut Settings) {
             ui.checkbox(&mut d.overlay_show_open, "große Teilnahme-Anzeige zeigen")
                 .on_hover_text("„Host-Zugang offen“ mit Countdown und Teilnehmern. Aus, wenn du die kleine Timer-Anzeige (/timer) nutzt – Matrix-Run und Gewinner erscheinen weiterhin.");
             ui.end_row();
+            theme_row(ui, st, engine);
+            let d = &mut st.draft;
             ui.label(RichText::new("Programmstart").color(CYAN));
             ui.checkbox(&mut d.start_in_tray, "nur im Tray starten (Linux: minimiert)");
             ui.end_row();

@@ -5,34 +5,46 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Matrix-Run Timer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<link id="tfont" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
+/* Grundwerte = Design „Shadowrun“; die theme.css des Designs überschreibt sie. */
 :root{
-  --ink:#0e0b26; --line:#3a3170;
+  --ink:#0e0b26; --ink2:#161238; --line:#3a3170;
   --decker:#2ee6c5; --host:#ff3fa4; --gold:#ffd166; --text:#e8e3ff; --muted:#9a93c9;
+  --font:"Chakra Petch","Bahnschrift","Segoe UI",sans-serif;
+  --font-head:var(--font);
+  --panel-bg:linear-gradient(160deg,rgba(22,18,56,.93),rgba(14,11,38,.9));
+  --panel-border:1px solid var(--line);
+  --panel-radius:4px;
+  --panel-shadow:none;
+  --chip-pattern:repeating-linear-gradient(90deg,transparent 0 30px,rgba(165,139,255,.05) 30px 31px);
+  --node-fill:rgba(14,11,38,.95);
+  --track:#251f52;
+  --tag-radius:2px;
   --accent:var(--decker);
   color-scheme:dark;
 }
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:var(--text);
-  font:500 16px/1.2 "Chakra Petch","Bahnschrift","Segoe UI",sans-serif}
+  font:500 16px/1.2 var(--font)}
 .wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:6px;
   transition:opacity .4s ease;opacity:1}
 body[data-show="0"] .wrap{opacity:0}
 .chip{width:min(100%,560px);display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:0 14px;
-  padding:12px 16px 14px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:4px;
-  background:linear-gradient(160deg,rgba(22,18,56,.93),rgba(14,11,38,.9));position:relative}
-.chip::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:4px;
-  background:repeating-linear-gradient(90deg,transparent 0 30px,rgba(165,139,255,.05) 30px 31px)}
-svg{width:36px;height:40px;grid-row:1/3}
-svg polygon{fill:rgba(14,11,38,.95);stroke:var(--accent);stroke-width:3}
-svg text{fill:var(--accent);font:700 15px "Chakra Petch",sans-serif}
+  padding:12px 16px 14px;border:var(--panel-border);border-left:3px solid var(--accent);border-radius:var(--panel-radius);
+  background:var(--panel-bg);box-shadow:var(--panel-shadow);position:relative}
+.chip::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:var(--panel-radius);
+  background:var(--chip-pattern)}
+svg{width:36px;height:40px;grid-row:1/3;overflow:visible}
+svg .shape{fill:var(--node-fill);stroke:var(--accent);stroke-width:3}
+svg .inner{fill:none;stroke:var(--accent);stroke-width:1;opacity:.6}
+svg text{fill:var(--accent);font:700 15px var(--font-head)}
 .label{font-size:clamp(13px,3.2vw,16px);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.label kbd{font:inherit;font-weight:700;color:var(--ink);background:var(--accent);padding:0 6px;border-radius:2px}
-.value{grid-row:1/3;grid-column:3;font-size:clamp(28px,8vw,44px);font-weight:700;font-variant-numeric:tabular-nums;color:var(--text);
+.label kbd{font:inherit;font-weight:700;color:var(--ink);background:var(--accent);padding:0 6px;border-radius:var(--tag-radius)}
+.value{grid-row:1/3;grid-column:3;font-family:var(--font-head);font-size:clamp(28px,8vw,44px);font-weight:700;font-variant-numeric:tabular-nums;color:var(--text);
   text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw}
 .bar{grid-column:2;margin-top:8px;height:8px;display:grid;grid-template-columns:repeat(30,1fr);gap:2px}
-.bar i{background:#251f52}
+.bar i{background:var(--track);border-radius:calc(var(--tag-radius)/2)}
 .bar i.on{background:var(--accent)}
 body[data-state="open"]{--accent:var(--decker)}
 body[data-state="run"]{--accent:var(--host)}
@@ -41,14 +53,15 @@ body[data-state="winner"]{--accent:var(--gold)}
 body[data-state="winner"] .value{color:var(--gold)}
 body[data-state="wait"] .value{color:var(--text)}
 .urgent .value{color:var(--host)}
-@keyframes scan{0%,100%{background:#251f52}50%{background:var(--host)}}
+@keyframes scan{0%,100%{background:var(--track)}50%{background:var(--host)}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+<link id="tcss" rel="stylesheet" href="">
 </head>
 <body data-show="0" data-state="wait">
 <div class="wrap">
   <div id="chip" class="chip" role="status" aria-live="polite">
-    <svg viewBox="0 0 36 40" aria-hidden="true"><polygon points="18,2 34,11 34,29 18,38 2,29 2,11"/><text id="glyph" x="18" y="25" text-anchor="middle">W6</text></svg>
+    <svg viewBox="0 0 36 40" aria-hidden="true"><g id="shape"><polygon class="shape" points="18,2 34,11 34,29 18,38 2,29 2,11"/></g><text id="glyph" x="18" y="25" text-anchor="middle">W6</text></svg>
     <div id="label" class="label"></div>
     <div id="value" class="value"></div>
     <div id="bar" class="bar"></div>
@@ -60,22 +73,50 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const q=new URLSearchParams(location.search);
 const demo=q.get('demo')==='1';
-let view={show:false}, endAt=0, total=0;
+let view={show:false}, endAt=0, total=0, last=null;
+
+// ---------- Design ----------
+let UI={}, themeKey='';
+const U=(k,vars)=>{let s=UI[k]??'';for(const [a,b] of Object.entries(vars||{}))s=s.split(`{${a}}`).join(b);return s;};
+// Symbol links im Chip: gleiche Form wie die Knoten im Overlay
+const SHAPES={
+  hex:'<polygon class="shape" points="18,2 34,11 34,29 18,38 2,29 2,11"/>',
+  diamond:'<polygon class="shape" points="18,1 35,20 18,39 1,20"/>',
+  circle:'<circle class="shape" cx="18" cy="20" r="16"/>',
+  ring:'<circle class="shape" cx="18" cy="20" r="16"/><circle class="inner" cx="18" cy="20" r="11.5"/>',
+  star:'<polygon class="shape" points="18,1 22.6,13.7 36,14.1 25.4,22.4 29.2,35.4 18,27.8 6.8,35.4 10.6,22.4 0,14.1 13.4,13.7"/>',
+};
+async function ensureTheme(id,v){
+  const key=`${id||''}#${v||0}`;if(key===themeKey)return;themeKey=key;
+  let t;try{t=await (await fetch('/api/theme'+(id?`?id=${encodeURIComponent(id)}`:''),{cache:'no-store'})).json();}catch(e){themeKey='';return;}
+  if(themeKey!==key)return;
+  UI=t.ui||{};document.body.dataset.theme=t.id;
+  $('shape').innerHTML=SHAPES[t.shape]||SHAPES.hex;
+  if(t.font_url&&$('tfont').getAttribute('href')!==t.font_url)$('tfont').href=t.font_url;
+  $('tcss').href=`/theme/${encodeURIComponent(t.id)}.css?v=${v||0}`;
+  if(last)apply(fromState(last));
+}
 
 const clock=s=>{s=Math.max(0,Math.ceil(s));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;};
 function bar(frac){let h='';const on=Math.round(Math.max(0,Math.min(1,frac))*30);for(let i=0;i<30;i++)h+=`<i class="${i<on?'on':''}" style="animation-delay:${i*40}ms"></i>`;$('bar').innerHTML=h;}
 
 // Zustand des Tools → Anzeige
+// Text mit {kw}/{prize}: Platzhalter werden escaped eingesetzt, {kw} als Taste
+const fill=(k,vars)=>esc(U(k)).replace(/\{(\w+)\}/g,(m,n)=>n in vars?vars[n]:m);
 function fromState(st){
+  last=st;
+  if(!demo&&st.theme!==undefined)ensureTheme(st.theme,st.theme_v);
   const a=st.auto||{enabled:false,state:'aus'};
+  const kw=`<kbd>${esc(st.keyword||'!join')}</kbd>`, prize=esc(st.prize||'');
   if(st.mode==='open'){
-    return {show:true,state:'open',label:`Schreibe <kbd>${esc(st.keyword||'!join')}</kbd>${st.prize?` · ${esc(st.prize)}`:' – Zugang offen'}`,glyph:'!',
+    return {show:true,state:'open',label:st.prize?fill('t_open',{kw,prize}):fill('t_open_noprize',{kw}),glyph:U('glyph_open'),
       remaining:st.timer_active?st.timer_remaining:null,total:st.timer_total};
   }
-  if(st.mode==='run')return {show:true,state:'run',label:'Matrix-Run läuft',glyph:'IC',value:'BREACH'};
+  if(st.mode==='run')return {show:true,state:'run',label:fill('t_run',{}),glyph:U('glyph_run'),value:U('t_run_value')};
   if(st.mode==='winner'){const ws=st.winners||[];const first=(ws[0]&&ws[0].login)||st.winner||'';
-    return {show:true,state:'winner',label:ws.length>1?`${ws.length} Gewinner`:(ws[0]&&ws[0].prize?`Gewinner · ${esc(ws[0].prize.label)}`:'Gewinner'),glyph:'★',value:'@'+first+(ws.length>1?` +${ws.length-1}`:'')};}
-  if(a.enabled&&a.state==='wartet')return {show:true,state:'wait',label:st.prize?`Nächstes Giveaway: ${esc(st.prize)}`:'Nächstes Giveaway in',glyph:'W6',remaining:a.remaining,total:a.total};
+    const label=ws.length>1?fill('winners',{n:ws.length}):(ws[0]&&ws[0].prize?fill('t_winner_prize',{prize:esc(ws[0].prize.label)}):fill('t_winner',{}));
+    return {show:true,state:'winner',label,glyph:U('glyph_win'),value:'@'+first+(ws.length>1?` +${ws.length-1}`:'')};}
+  if(a.enabled&&a.state==='wartet')return {show:true,state:'wait',label:st.prize?fill('t_wait_prize',{prize}):fill('t_wait',{}),glyph:U('glyph_wait'),remaining:a.remaining,total:a.total};
   return {show:false};
 }
 function apply(v){
@@ -84,7 +125,7 @@ function apply(v){
   document.body.dataset.state=v.state;
   $('label').innerHTML=v.label;$('glyph').textContent=v.glyph;
   if(v.remaining!=null){endAt=performance.now()+v.remaining*1000;total=v.total||0;}
-  else{endAt=0;$('value').textContent=v.value??'Manuell';}
+  else{endAt=0;$('value').textContent=v.value??U('t_manual');}
   if(v.state==='run')bar(1);
   if(v.state==='winner')bar(1);
   if(v.remaining==null&&v.state==='open')bar(1);
@@ -117,7 +158,7 @@ async function runDemo(){
     apply(fromState({mode:'winner',winners:[{login:'chromefox',prize:{label:'Gila'}}]}));await wait(5000);
   }
 }
-if(demo)runDemo();else connect();
+if(demo)ensureTheme(q.get('theme')||'',Date.now()).then(runDemo);else{ensureTheme('',0);connect();}
 </script>
 </body>
 </html>

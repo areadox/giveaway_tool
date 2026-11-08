@@ -1,0 +1,7 @@
+/* Shadowrun – Matrix-Run: Neon-Cyberpunk. Die Grundwerte stecken bereits im
+   Overlay; hier nur das Raster-Muster und die Scanlines. */
+:root{
+  --panel-pattern:repeating-linear-gradient(90deg,transparent 0 46px,rgba(165,139,255,.05) 46px 47px),
+                  repeating-linear-gradient(0deg,transparent 0 46px,rgba(165,139,255,.05) 46px 47px);
+  --chip-pattern:repeating-linear-gradient(90deg,transparent 0 30px,rgba(165,139,255,.05) 30px 31px);
+}

@@ -1,0 +1,25 @@
+/* WoW-Stil – dunkles Leder und Stein, Goldrahmen, epische Lila-Akzente. */
+:root{
+  --ink:#140d06; --ink2:#22170c; --line:#6b5130;
+  --text:#f3e6c8; --muted:#b39e78;
+  --decker:#5fd35f; --host:#d6402b; --glitch:#ff7b1c; --edge:#b36bff; --gold:#ffcc33;
+  --font:"Alegreya Sans","Segoe UI",sans-serif;
+  --font-head:"Cinzel",Georgia,serif;
+  --panel-bg:linear-gradient(170deg,rgba(43,30,16,.95),rgba(20,13,6,.93));
+  --panel-border:2px solid #8a6a3a;
+  --panel-radius:6px;
+  --panel-shadow:inset 0 0 0 1px rgba(0,0,0,.6),inset 0 0 26px rgba(0,0,0,.55),0 0 0 1px rgba(255,204,51,.15);
+  --panel-pattern:radial-gradient(ellipse at 50% 0%,rgba(255,204,51,.10),transparent 60%),
+                  repeating-linear-gradient(45deg,transparent 0 9px,rgba(255,255,255,.012) 9px 10px);
+  --chip-pattern:radial-gradient(ellipse at 0% 50%,rgba(255,204,51,.12),transparent 60%);
+  --winner-bg:radial-gradient(ellipse at 50% 0%,rgba(179,107,255,.25),transparent 65%),rgba(20,13,6,.97);
+  --portrait-overlay:radial-gradient(circle,transparent 60%,rgba(20,13,6,.55));
+  --die-bg:#f3e6c8; --die-pip:#3a2510; --die-radius:8px;
+  --track:#2e2114; --box-line:#8a6a3a;
+  --node-fill:rgba(20,13,6,.96); --node-locked:#5a4428; --node-label-locked:#8a7454;
+  --tag-radius:4px;
+}
+.hostname,.open h1,.winner small{letter-spacing:.04em}
+.winner{border:3px double var(--gold)}
+.winner strong{color:var(--edge);text-shadow:0 0 18px rgba(179,107,255,.5)}
+.boxes i.x::after{background:var(--host);inset:3px;border-radius:50%}

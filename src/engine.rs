@@ -12,6 +12,7 @@ use crate::overlay::OverlayServer;
 use crate::prize::{self, Prize, PrizeView};
 use crate::sound::{self, Sfx};
 use crate::sso::{self, AssetRow};
+use crate::themes;
 use crate::twitch::{TwitchReader, TwitchSender};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
@@ -102,6 +103,7 @@ pub struct SettingsPatch {
     pub start_in_tray: Option<bool>,
     pub close_to_tray: Option<bool>,
     pub overlay_show_open: Option<bool>,
+    pub theme: Option<String>,
 }
 
 impl SettingsPatch {
@@ -130,7 +132,8 @@ impl SettingsPatch {
             hide_eve_names,
             start_in_tray,
             close_to_tray,
-            overlay_show_open
+            overlay_show_open,
+            theme
         );
         if let Some(t) = self.oauth_token.as_ref().filter(|t| !t.trim().is_empty()) {
             c.oauth_token = t.trim().to_string();
@@ -207,6 +210,12 @@ pub enum DockCmd {
     SsoStructures {
         enabled: bool,
     },
+    /// Design wechseln (wird gespeichert)
+    Theme {
+        id: String,
+    },
+    /// Eigene Designs aus dem Ordner `themes/` neu einlesen
+    ReloadThemes,
 }
 
 #[derive(Serialize)]
@@ -316,6 +325,9 @@ struct OverlayState<'a> {
     prize: String,
     status: &'a str,
     auto: AutoState,
+    /// Design-ID; `theme_v` ändert sich, wenn Designs neu geladen wurden.
+    theme: String,
+    theme_v: u64,
 }
 
 /// Stand des Auto-Timers für das Overlay und die Timer-Anzeige.
@@ -680,6 +692,7 @@ impl Engine {
                 winners: &winners,
                 decker: &self.cfg.decker(),
                 duration,
+                lexicon: &themes::registry().get(&self.cfg.theme).lexicon,
             },
         );
         self.phase = Phase::Running;
@@ -1326,6 +1339,35 @@ impl Engine {
 
     // ------------------------------------------------------------ Overlay
 
+    /// Design wechseln und speichern.
+    pub fn set_theme(&mut self, id: &str) -> Result<(), String> {
+        if !themes::registry().list().iter().any(|(t, ..)| t == id) {
+            return Err(format!("Unbekanntes Design: {id}"));
+        }
+        let mut c = self.cfg.clone();
+        c.theme = id.to_string();
+        self.apply_config(c)?;
+        let name = themes::registry().get(id).info.name.clone();
+        self.log(format!("Design: {name}"), Tone::Dark);
+        Ok(())
+    }
+
+    /// Eigene Designs neu einlesen; Fehler landen im Log.
+    pub fn reload_themes(&mut self) {
+        let msgs = themes::registry().reload();
+        let n = themes::registry().list().len();
+        for m in &msgs {
+            self.log(m.clone(), Tone::Yellow);
+        }
+        self.log(format!("Designs neu geladen: {n} verfügbar"), Tone::Dark);
+        self.dirty = true;
+    }
+
+    /// ID des aktiven Designs (unbekannte → Standard).
+    pub fn theme_id(&self) -> String {
+        themes::registry().get(&self.cfg.theme).info.id.clone()
+    }
+
     fn overlay_json(&self) -> String {
         let (mode, visible) = match self.phase {
             Phase::Ready => ("idle", false),
@@ -1374,6 +1416,8 @@ impl Engine {
             prize: self.prize_summary(),
             status: &self.status,
             auto: self.auto_state(),
+            theme: self.theme_id(),
+            theme_v: themes::registry().version(),
         };
         let mut v = serde_json::to_value(&st).unwrap_or(Value::Null);
         if self.cfg.hide_eve_names {
@@ -1468,6 +1512,8 @@ impl Engine {
             DockCmd::SsoLogout => self.sso_logout(),
             DockCmd::SsoClient { id } => self.set_sso_client_id(&id),
             DockCmd::SsoStructures { enabled } => self.set_sso_structures(enabled),
+            DockCmd::Theme { id } => self.set_theme(&id)?,
+            DockCmd::ReloadThemes => self.reload_themes(),
         }
         self.dirty = true;
         Ok(None)
@@ -1487,6 +1533,10 @@ impl Engine {
             "eve_api_key_set": !c.eve_api_key.trim().is_empty(), "eve2twitch_bot_name": c.eve2twitch_bot_name,
             "hide_eve_names": c.hide_eve_names, "start_in_tray": c.start_in_tray, "close_to_tray": c.close_to_tray,
             "overlay_show_open": c.overlay_show_open,
+            "theme": self.theme_id(),
+            "themes": themes::registry().list().into_iter()
+                .map(|(id, name, builtin)| serde_json::json!({"id": id, "name": name, "builtin": builtin}))
+                .collect::<Vec<_>>(),
             "winners": c.winners.max(1), "prize_text": c.prize_text, "prizes": c.prizes,
             "eve_sso_client_id": c.eve_sso_client_id, "eve_sso_structures": c.eve_sso_structures,
             "eve_sso_connected": self.sso_connected(), "eve_sso_character_name": c.eve_sso_character_name,
@@ -2348,6 +2398,51 @@ mod tests {
         assert!(json.contains("\"timer_active\":true"));
         e.cfg.overlay_show_open = true;
         assert!(e.overlay_json().contains("\"visible\":true"));
+        e.shutdown();
+    }
+
+    #[test]
+    fn theme_switch() {
+        let dir = std::env::temp_dir().join(format!("cg-theme-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        let mut e = Engine::new(
+            Config {
+                web_port: 19367,
+                sound: false,
+                ..Default::default()
+            },
+            db,
+        );
+        assert!(e.overlay_json().contains("\"theme\":\"shadowrun\""));
+        assert!(e
+            .handle_dock(DockCmd::Theme {
+                id: "gibtsnicht".into()
+            })
+            .is_err());
+        assert!(e.handle_dock(DockCmd::Theme { id: "eve".into() }).is_ok());
+        assert_eq!(e.cfg.theme, "eve");
+        assert!(e.overlay_json().contains("\"theme\":\"eve\""));
+        let dock = e.dock_json();
+        assert!(dock.contains("\"themes\":[") && dock.contains("\"anime\""));
+        // Unbekanntes Design in der Config → Standard, statt kaputter Anzeige
+        e.cfg.theme = "weg".into();
+        assert_eq!(e.theme_id(), "shadowrun");
+        // Run nutzt die Begriffe des Designs
+        e.cfg.theme = "wow".into();
+        for n in ["a", "b", "c"] {
+            e.participants.push(n.into());
+        }
+        e.phase = Phase::Open;
+        e.start_breach("!hack", "8");
+        let frames = &e.run.as_ref().unwrap().frames;
+        assert_eq!(frames.last().unwrap().view.phase, "LOOT");
+        // Patch aus dem Dock
+        let patch = SettingsPatch {
+            theme: Some("palia".into()),
+            ..Default::default()
+        };
+        assert_eq!(patch.apply_to(&e.cfg).unwrap().theme, "palia");
         e.shutdown();
     }
 

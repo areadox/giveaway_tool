@@ -10,6 +10,7 @@
 //! die Inszenierung und endet immer mit der extrahierten Gewinnerdatei.
 
 use crate::sound::Sfx;
+use crate::themes::Lexicon;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use serde::Serialize;
@@ -45,8 +46,10 @@ pub struct IceView {
     pub name: String,
     /// "patrol" | "killer" | "black" | "tar" | "acid" | "track" | "crash" | "blaster" | "spider"
     pub kind: String,
-    /// "aktiv" | "gecrasht" | "abgeschüttelt"
+    /// "active" | "crashed" | "shaken"
     pub status: String,
+    /// Anzeigetext des Status (aus dem Design)
+    pub status_text: String,
     pub hp: u8,
     pub hp_max: u8,
 }
@@ -81,7 +84,9 @@ pub struct RunView {
     pub asdf: [u8; 4],
     pub decker: String,
     pub deck: String,
+    /// Anzeigetext (Heiß-/Kalt-Sim o. ä. aus dem Design)
     pub sim: String,
+    pub hot: bool,
     pub os: u32,
     pub os_max: u32,
     pub marks: u8,
@@ -91,13 +96,17 @@ pub struct RunView {
     pub stun_max: u8,
     pub edge: u8,
     pub edge_max: u8,
+    /// "none" | "passive" | "active"
     pub alert: String,
     pub link_locked: bool,
     pub combat_turn: u32,
     pub ice: Vec<IceView>,
     pub nodes: Vec<NodeView>,
     pub node: usize,
+    /// Anzeigename der Phase (aus dem Design)
     pub phase: String,
+    /// Feste Kennung: jackin | grid | marks | ice | search | bomb | crack | decode | jackout | converge | done
+    pub phase_key: String,
     pub phase_text: String,
     pub roll: Option<Roll>,
     pub log: Vec<LogLine>,
@@ -116,45 +125,6 @@ pub struct Frame {
     #[serde(skip)]
     pub sfx: Option<Sfx>,
 }
-
-const NODES: [&str; 7] = [
-    "JACK-IN",
-    "GITTER",
-    "HOST-FIREWALL",
-    "SICHERHEITSKNOTEN",
-    "DATEIARCHIV",
-    "GEWINNER.DAT",
-    "AUSSTÖPSELN",
-];
-
-const HOSTS: &[&str] = &[
-    "Kronos Lotterie AG",
-    "Helios Datentresor",
-    "NeoNET Gewinnspiel-Archiv",
-    "Orbital Logistik // Preisverteilung",
-    "Schwarzwald Pharma Rewards",
-    "Rhein-Ruhr Arcology Bank",
-    "Shiawase-Kita Glücksspiel",
-    "Proxima Media Vault",
-];
-
-const SCULPTS: &[&str] = &[
-    "eine schwarze Pyramide über einem Neon-Ozean",
-    "ein gotischer Tresor-Dom aus Chrom",
-    "ein Bonsai-Garten aus Glas und Licht",
-    "ein endloser Casino-Saal voller Spielautomaten",
-    "eine Festung aus rotierenden Würfeln",
-    "ein Unterwasser-Archiv mit leuchtenden Quallen",
-];
-
-const DECKS: &[&str] = &[
-    "Kurogane K-7",
-    "Valkyrie Mk.IV",
-    "Ronin X3",
-    "Sentinel Pro",
-    "Nightjar 9",
-    "Hexwire Custom",
-];
 
 struct Decker {
     logic: u32,
@@ -185,19 +155,6 @@ enum IceKind {
 }
 
 impl IceKind {
-    fn name(self) -> &'static str {
-        match self {
-            IceKind::Patrol => "Patrouillen-IC",
-            IceKind::Killer => "Killer-IC",
-            IceKind::Black => "Schwarzes IC",
-            IceKind::Blaster => "Blaster-IC",
-            IceKind::Tar => "Teerbaby",
-            IceKind::Acid => "Säure-IC",
-            IceKind::Track => "Aufspür-IC",
-            IceKind::Crash => "Absturz-IC",
-            IceKind::Spider => "SPINNE",
-        }
-    }
     fn key(self) -> &'static str {
         match self {
             IceKind::Patrol => "patrol",
@@ -215,6 +172,7 @@ impl IceKind {
 
 struct Gen<'a, R: Rng> {
     rng: &'a mut R,
+    lx: &'a Lexicon,
     v: RunView,
     d: Decker,
     r: u32,
@@ -267,6 +225,47 @@ impl<'a, R: Rng> Gen<'a, R> {
         }
     }
 
+    /// Text aus dem Wörterbuch des Designs.
+    /// `{decker}` und `{host}` stehen in jedem Text zur Verfügung.
+    fn tx(&self, key: &str, args: &[(&str, String)]) -> String {
+        let mut all = args.to_vec();
+        all.push(("decker", self.v.decker.clone()));
+        all.push(("host", self.v.host.clone()));
+        self.lx.t(key, &all)
+    }
+
+    fn ice_name(&self, kind: IceKind) -> String {
+        self.tx(&format!("ice.{}", kind.key()), &[])
+    }
+
+    fn set_ice_status(&mut self, idx: usize, status: &str) {
+        let key = match status {
+            "crashed" => "st.crashed",
+            "shaken" => "st.shaken",
+            _ => "st.active",
+        };
+        let text = self.tx(key, &[]);
+        let ice = &mut self.v.ice[idx];
+        ice.status = status.into();
+        ice.status_text = text;
+    }
+
+    fn hot_mod(&self) -> String {
+        if self.d.hot {
+            self.tx("mod.hot", &[])
+        } else {
+            String::new()
+        }
+    }
+
+    fn wound_label(&self, wm: u32) -> String {
+        if wm > 0 {
+            self.tx("mod.wound", &[("n", wm.to_string())])
+        } else {
+            String::new()
+        }
+    }
+
     fn log(&mut self, text: impl Into<String>, tone: &str) {
         self.v.log.push(LogLine {
             text: text.into(),
@@ -294,8 +293,10 @@ impl<'a, R: Rng> Gen<'a, R> {
         self.v.node = idx;
     }
 
-    fn phase(&mut self, phase: &str, text: impl Into<String>) {
-        self.v.phase = phase.into();
+    /// Phase setzen: `key` ohne Präfix (z. B. "ice"); der Text kommt vom Aufrufer.
+    fn phase(&mut self, key: &str, text: impl Into<String>) {
+        self.v.phase = self.tx(&format!("phase.{key}"), &[]);
+        self.v.phase_key = key.into();
         self.v.phase_text = text.into();
     }
 
@@ -308,13 +309,11 @@ impl<'a, R: Rng> Gen<'a, R> {
         self.v.os = (self.v.os + n).min(cap);
         if self.v.os >= 30 && !self.os_warned {
             self.os_warned = true;
-            self.log(
-                format!(
-                    "WARNUNG: Overwatch-Wert {}/{} – GOD wird aufmerksam!",
-                    self.v.os, OS_MAX
-                ),
-                "warn",
+            let t = self.tx(
+                "log.os_warn",
+                &[("os", self.v.os.to_string()), ("max", OS_MAX.to_string())],
             );
+            self.log(t, "warn");
         }
     }
 
@@ -415,7 +414,10 @@ impl<'a, R: Rng> Gen<'a, R> {
         let mut tries = 0;
         loop {
             let a = self.pool(
-                format!("{att_label} + Edge {edge}"),
+                self.tx(
+                    "mod.edge",
+                    &[("label", att_label.clone()), ("n", edge.to_string())],
+                ),
                 att_n + edge,
                 None,
                 true,
@@ -456,39 +458,61 @@ impl<'a, R: Rng> Gen<'a, R> {
         self.push_roll(weight, Some(sfx));
     }
 
-    fn host_def(&self, attr: usize, label: &str) -> (String, u32) {
+    /// Host-Verteidigung: Stufe + Attribut (`attr_key` = "firewall" | "attack").
+    fn host_def(&self, attr: usize, attr_key: &str) -> (String, u32) {
         let a = self.v.asdf[attr] as u32;
-        (format!("Host {} + {label} {a}", self.r), self.r + a)
+        let label = self.tx(
+            "pool.host",
+            &[
+                ("r", self.r.to_string()),
+                ("attr", self.tx(&format!("attr.{attr_key}"), &[])),
+                ("a", a.to_string()),
+            ],
+        );
+        (label, self.r + a)
+    }
+
+    fn pool_label(&self, key: &str, a: u32, b: u32) -> String {
+        self.tx(key, &[("a", a.to_string()), ("b", b.to_string())])
     }
 
     // ----------------------------------------------------------------- Phasen
 
     fn jack_in(&mut self) {
         self.set_node(0, "active");
-        self.phase("JACK-IN", format!("{} stöpselt sich ein", self.v.decker));
-        self.log(
-            format!(
-                "Cyberdeck {} hochgefahren // Persona {} online",
-                self.v.deck, self.v.decker
-            ),
-            "info",
+        let dk = self.v.decker.clone();
+        let t = self.tx("pt.jackin", &[("decker", dk.clone())]);
+        self.phase("jackin", t);
+        let t = self.tx(
+            "log.deck_online",
+            &[("deck", self.v.deck.clone()), ("decker", dk)],
         );
+        self.log(t, "info");
         if self.d.hot {
-            self.log("Heiß-Sim aktiv: +2 Würfel – Biofeedback-Gefahr!", "warn");
+            let t = self.tx("log.hot", &[]);
+            self.log(t, "warn");
         } else {
-            self.log("Kalt-Sim aktiv: sicherer, aber langsamer", "dim");
+            let t = self.tx("log.cold", &[]);
+            self.log(t, "dim");
         }
         self.push(1.2, Some(Sfx::Click));
 
         self.set_node(1, "active");
-        self.phase("GITTER", format!("Suche Host: {}", self.v.host));
-        self.log(
-            format!(
-                "Ziel: {} // Stufe {} // A{} S{} D{} F{}",
-                self.v.host, self.r, self.v.asdf[0], self.v.asdf[1], self.v.asdf[2], self.v.asdf[3]
-            ),
-            "info",
+        let t = self.tx("pt.grid", &[("host", self.v.host.clone())]);
+        self.phase("grid", t);
+        let [a, s, d, f] = self.v.asdf.map(|x| x.to_string());
+        let t = self.tx(
+            "log.target",
+            &[
+                ("host", self.v.host.clone()),
+                ("r", self.r.to_string()),
+                ("a", a),
+                ("s", s),
+                ("d", d),
+                ("f", f),
+            ],
         );
+        self.log(t, "info");
         self.push(1.0, None);
 
         // Matrixwahrnehmung (Erfolgsprobe, Schwelle 1)
@@ -496,17 +520,9 @@ impl<'a, R: Rng> Gen<'a, R> {
         let mut attempt = 0;
         loop {
             attempt += 1;
-            let mut a = self.pool(
-                format!(
-                    "Computer {} + Intuition {}{}",
-                    self.d.computer,
-                    self.d.intuition,
-                    if self.d.hot { " + 2" } else { "" }
-                ),
-                n,
-                Some(self.d.dataproc),
-                false,
-            );
+            let label = self.pool_label("pool.perception", self.d.computer, self.d.intuition)
+                + &self.hot_mod();
+            let mut a = self.pool(label, n, Some(self.d.dataproc), false);
             if attempt >= 3 && a.hits == 0 {
                 a.dice[0] = 5;
                 a.hits = 1;
@@ -517,7 +533,7 @@ impl<'a, R: Rng> Gen<'a, R> {
             let roll = Roll {
                 id: self.roll_id,
                 actor: "decker".into(),
-                action: "Matrixwahrnehmung".into(),
+                action: self.tx("act.perception", &[]),
                 attacker: a,
                 defender: None,
                 threshold: Some(1),
@@ -530,29 +546,31 @@ impl<'a, R: Rng> Gen<'a, R> {
             };
             if ok {
                 let sculpt = self.v.host_sculpt.clone();
-                self.log(format!("Host-Icon erfasst: {sculpt}"), "good");
-                self.show_roll(roll, "HOST GEFUNDEN", 1.5);
+                let t = self.tx("log.host_found", &[("sculpt", sculpt)]);
+                self.log(t, "good");
+                let v = self.tx("v.host_found", &[]);
+                self.show_roll(roll, v, 1.5);
                 break;
             }
-            self.log("Gitter verrauscht – Host-Icon nicht greifbar", "dim");
-            self.show_roll(roll, "KEIN TREFFER", 1.2);
+            let t = self.tx("log.host_miss", &[]);
+            self.log(t, "dim");
+            let v = self.tx("v.no_hit", &[]);
+            self.show_roll(roll, v, 1.2);
         }
     }
 
     fn marks(&mut self, target: u8) {
         self.set_node(2, "active");
-        self.phase("MARKEN", format!("Marken setzen auf {}", self.v.host));
+        let t = self.tx("pt.marks", &[("host", self.v.host.clone())]);
+        self.phase("marks", t);
         let brute = self.rng.gen_bool(0.35);
+        let dk = self.v.decker.clone();
         if brute {
-            self.log(
-                format!("{} wählt BRUTE FORCE – laut, aber schnell", self.v.decker),
-                "warn",
-            );
+            let t = self.tx("log.choose_brute", &[("decker", dk)]);
+            self.log(t, "warn");
         } else {
-            self.log(
-                format!("{} wählt EILIGES HACKEN – leise rein", self.v.decker),
-                "info",
-            );
+            let t = self.tx("log.choose_hack", &[("decker", dk)]);
+            self.log(t, "info");
         }
         let mut attempts = 0;
         while self.v.marks < target {
@@ -567,36 +585,34 @@ impl<'a, R: Rng> Gen<'a, R> {
             let pen = if want == 2 { 4 } else { 0 };
             let (action, att_label, base, limit, def_attr, def_name) = if brute {
                 (
-                    "Brute Force",
-                    format!(
-                        "Cybercombat {} + Logik {}",
-                        self.d.cybercombat, self.d.logic
-                    ),
+                    self.tx("act.brute", &[]),
+                    self.pool_label("pool.brute", self.d.cybercombat, self.d.logic),
                     self.d.cybercombat + self.d.logic,
                     self.d.attack,
                     3,
-                    "Firewall",
+                    "firewall",
                 )
             } else {
                 (
-                    "Eiliges Hacken",
-                    format!("Hacking {} + Logik {}", self.d.hacking, self.d.logic),
+                    self.tx("act.hack", &[]),
+                    self.pool_label("pool.hack", self.d.hacking, self.d.logic),
                     self.d.hacking + self.d.logic,
                     self.d.sleaze,
                     3,
-                    "Firewall",
+                    "firewall",
                 )
             };
             let att_label = format!(
                 "{att_label}{}{}{}",
-                if self.d.hot { " + 2" } else { "" },
-                if pen > 0 { " − 4 (2 Marken)" } else { "" },
-                if self.wound_mod() > 0 {
-                    format!(" − {} (Schaden)", self.wound_mod())
+                self.hot_mod(),
+                if pen > 0 {
+                    self.tx("mod.two_marks", &[])
                 } else {
                     String::new()
-                }
+                },
+                self.wound_label(self.wound_mod())
             );
+            let action = action.as_str();
             let n = (base + self.hot())
                 .saturating_sub(pen + self.wound_mod())
                 .max(2);
@@ -604,10 +620,8 @@ impl<'a, R: Rng> Gen<'a, R> {
             let force = attempts >= 5;
             let use_edge = attempts >= 3 && self.v.edge > 0 && self.rng.gen_bool(0.5);
             let roll = if use_edge {
-                self.log(
-                    format!("EDGE! {} sprengt die Grenzen", self.v.decker),
-                    "edge",
-                );
+                let t = self.tx("log.edge_marks", &[("decker", self.v.decker.clone())]);
+                self.log(t, "edge");
                 self.edge_roll(action, att_label, n, def_label, def_n)
             } else {
                 self.opposed(
@@ -626,60 +640,70 @@ impl<'a, R: Rng> Gen<'a, R> {
             if roll.success {
                 let got = want.min(need);
                 self.v.marks += got;
-                let verdict = format!(
-                    "+{got} MARKE{} ({}/{})",
-                    if got > 1 { "N" } else { "" },
-                    self.v.marks,
-                    target
+                let verdict = self.tx(
+                    if got > 1 { "v.marks" } else { "v.mark" },
+                    &[
+                        ("n", got.to_string()),
+                        ("marks", self.v.marks.to_string()),
+                        ("target", target.to_string()),
+                    ],
                 );
-                self.log(
-                    format!(
-                        "{action}: {} Nettoerfolge → Marke {}/{target} // OW {}",
-                        roll.net, self.v.marks, self.v.os
-                    ),
-                    "good",
+                let t = self.tx(
+                    "log.mark_ok",
+                    &[
+                        ("action", action.to_string()),
+                        ("net", roll.net.to_string()),
+                        ("marks", self.v.marks.to_string()),
+                        ("target", target.to_string()),
+                        ("os", self.v.os.to_string()),
+                    ],
                 );
-                if brute && self.v.alert != "AKTIVER ALARM" {
-                    self.v.alert = "AKTIVER ALARM".into();
-                    self.log("Brute Force bemerkt – AKTIVER ALARM", "bad");
+                self.log(t, "good");
+                if brute && self.v.alert != "active" {
+                    self.v.alert = "active".into();
+                    let t = self.tx("log.brute_noticed", &[]);
+                    self.log(t, "bad");
                 }
                 if roll.glitch {
-                    self.log("PATZER: Spuren im Zugriffsprotokoll (+2 OW)", "warn");
+                    let t = self.tx("log.glitch_trace", &[]);
+                    self.log(t, "warn");
                     self.add_os(2);
                 }
                 self.show_roll(roll, verdict, 1.6);
             } else {
                 if roll.critical {
                     let dmg = self.matrix_damage(2);
-                    self.log(
-                        format!("KRITISCHER PATZER! Deck überhitzt – {dmg} Matrixschaden"),
-                        "bad",
-                    );
+                    let t = self.tx("log.crit_glitch", &[("n", dmg.to_string())]);
+                    self.log(t, "bad");
                 } else {
-                    self.log(
-                        format!("{action} abgewehrt – der Host markiert {}", self.v.decker),
-                        "bad",
+                    let t = self.tx(
+                        "log.mark_fail",
+                        &[
+                            ("action", action.to_string()),
+                            ("decker", self.v.decker.clone()),
+                        ],
                     );
+                    self.log(t, "bad");
                 }
-                self.v.alert = "AKTIVER ALARM".into();
+                self.v.alert = "active".into();
                 self.v.nodes[2].status = "alert".into();
-                self.show_roll(roll, "ABGEWEHRT", 1.5);
+                let v = self.tx("v.blocked", &[]);
+                self.show_roll(roll, v, 1.5);
                 self.v.nodes[2].status = "active".into();
             }
         }
-        self.log(
-            format!("Volle Kontrolle: {} Marken auf dem Host", self.v.marks),
-            "good",
-        );
+        let t = self.tx("log.marks_done", &[("n", self.v.marks.to_string())]);
+        self.log(t, "good");
     }
 
     fn ice_fights(&mut self, count: usize) {
         self.set_node(3, "active");
-        let alarm_before = self.v.alert == "AKTIVER ALARM";
+        let alarm_before = self.v.alert == "active";
         if !alarm_before {
-            self.v.alert = "PASSIVER ALARM".into();
+            self.v.alert = "passive".into();
         }
-        self.phase("IC", "Host startet Intrusion Countermeasures");
+        let t = self.tx("pt.ice_start", &[]);
+        self.phase("ice", t);
         let mut pool = vec![
             IceKind::Killer,
             IceKind::Acid,
@@ -702,54 +726,57 @@ impl<'a, R: Rng> Gen<'a, R> {
         for kind in list {
             self.v.combat_turn += 1;
             let hp_max = (8 + self.r.div_ceil(2)) as u8;
+            let name = self.ice_name(kind);
             self.v.ice.push(IceView {
-                name: kind.name().into(),
+                name: name.clone(),
                 kind: kind.key().into(),
-                status: "aktiv".into(),
+                status: String::new(),
+                status_text: String::new(),
                 hp: hp_max,
                 hp_max,
             });
             let idx = self.v.ice.len() - 1;
-            if kind == IceKind::Spider {
-                self.log(format!("Kampfrunde {} // Eine SPINNE betritt den Host – Sicherheitsdecker greift ein!", self.v.combat_turn), "bad");
+            self.set_ice_status(idx, "active");
+            let turn = self.v.combat_turn.to_string();
+            let t = if kind == IceKind::Spider {
+                self.tx("log.spider_enters", &[("turn", turn)])
             } else {
-                self.log(
-                    format!(
-                        "Kampfrunde {} // Host startet {}",
-                        self.v.combat_turn,
-                        kind.name()
-                    ),
-                    "bad",
-                );
-            }
-            self.phase("IC", format!("{} aktiv", kind.name()));
+                self.tx("log.ice_launch", &[("turn", turn), ("ice", name.clone())])
+            };
+            self.log(t, "bad");
+            let t = self.tx("pt.ice_active", &[("ice", name.clone())]);
+            self.phase("ice", t);
             self.v.nodes[3].status = "alert".into();
             self.push(1.1, Some(Sfx::Ice));
 
             if kind == IceKind::Patrol {
                 // Patrouillen-IC: Matrixwahrnehmung gegen Logik + Schleicher
+                let act = self.tx("act.patrol", &[]);
+                let host2 = self.tx("pool.host2", &[("r", self.r.to_string())]);
+                let def = self.pool_label("pool.patrol_def", self.d.logic, self.d.sleaze);
                 let roll = self.opposed(
                     "ice",
-                    "Patrouillen-Scan",
-                    format!("Host {} × 2", self.r),
+                    &act,
+                    host2,
                     self.r * 2,
                     None,
-                    format!("Logik {} + Schleicher {}", self.d.logic, self.d.sleaze),
+                    def,
                     self.d.logic + self.d.sleaze,
                     !alarm_before,
                 );
                 if roll.success {
-                    self.v.alert = "AKTIVER ALARM".into();
-                    self.log(
-                        "Patrouillen-IC hat die Persona erfasst – AKTIVER ALARM",
-                        "bad",
-                    );
-                    self.show_roll(roll, "ENTDECKT", 1.4);
+                    self.v.alert = "active".into();
+                    let t = self.tx("log.patrol_found", &[]);
+                    self.log(t, "bad");
+                    let v = self.tx("v.detected", &[]);
+                    self.show_roll(roll, v, 1.4);
                 } else {
-                    self.log("Patrouillen-IC gleitet vorbei – vorerst unentdeckt", "good");
-                    self.show_roll(roll, "UNBEMERKT", 1.4);
+                    let t = self.tx("log.patrol_miss", &[]);
+                    self.log(t, "good");
+                    let v = self.tx("v.unnoticed", &[]);
+                    self.show_roll(roll, v, 1.4);
                 }
-                self.v.ice[idx].status = "abgeschüttelt".into();
+                self.set_ice_status(idx, "shaken");
                 continue;
             }
 
@@ -758,20 +785,22 @@ impl<'a, R: Rng> Gen<'a, R> {
                 exchanges += 1;
                 // IC (oder Spinne) greift an: Host × 2 gegen Intuition + Firewall
                 let (att_label, att_n) = if kind == IceKind::Spider {
-                    ("Spinne: Cybercombat + Logik".to_string(), self.r + 6)
+                    (self.tx("pool.spider_att", &[]), self.r + 6)
                 } else {
-                    (format!("Host {} × 2", self.r), self.r * 2)
+                    (
+                        self.tx("pool.host2", &[("r", self.r.to_string())]),
+                        self.r * 2,
+                    )
                 };
+                let act = self.tx("act.ice_attack", &[("ice", name.clone())]);
+                let def = self.pool_label("pool.ice_def", self.d.intuition, self.d.firewall);
                 let roll = self.opposed(
                     "ice",
-                    &format!("{} greift an", kind.name()),
+                    &act,
                     att_label,
                     att_n,
                     None,
-                    format!(
-                        "Intuition {} + Firewall {}",
-                        self.d.intuition, self.d.firewall
-                    ),
+                    def,
                     self.d.intuition + self.d.firewall,
                     false,
                 );
@@ -780,8 +809,10 @@ impl<'a, R: Rng> Gen<'a, R> {
                     let verdict = self.ice_effect(kind, net);
                     self.show_roll(roll, verdict, 1.5);
                 } else {
-                    self.log(format!("{} verfehlt – Firewall hält", kind.name()), "good");
-                    self.show_roll(roll, "ABGEWEHRT", 1.3);
+                    let t = self.tx("log.ice_miss", &[("ice", name.clone())]);
+                    self.log(t, "good");
+                    let v = self.tx("v.blocked", &[]);
+                    self.show_roll(roll, v, 1.3);
                 }
 
                 // Decker kontert mit Datenspike
@@ -791,34 +822,22 @@ impl<'a, R: Rng> Gen<'a, R> {
                     .max(3);
                 let force = exchanges >= 2;
                 let (def_label, def_n) = if kind == IceKind::Spider {
-                    (
-                        "Spinne: Intuition + Firewall".to_string(),
-                        4 + self.v.asdf[3] as u32,
-                    )
+                    (self.tx("pool.spider_def", &[]), 4 + self.v.asdf[3] as u32)
                 } else {
-                    self.host_def(3, "Firewall")
+                    self.host_def(3, "firewall")
                 };
-                let att_label = format!(
-                    "Cybercombat {} + Logik {}{}{}",
-                    self.d.cybercombat,
-                    self.d.logic,
-                    if self.d.hot { " + 2" } else { "" },
-                    if wm > 0 {
-                        format!(" − {wm} (Schaden)")
-                    } else {
-                        String::new()
-                    }
-                );
+                let att_label = self.pool_label("pool.brute", self.d.cybercombat, self.d.logic)
+                    + &self.hot_mod()
+                    + &self.wound_label(wm);
+                let spike = self.tx("act.spike", &[]);
                 let roll = if exchanges >= 2 && self.v.edge > 0 && self.rng.gen_bool(0.35) {
-                    self.log(
-                        format!("EDGE! {} legt alles in den nächsten Spike", self.v.decker),
-                        "edge",
-                    );
-                    self.edge_roll("Datenspike", att_label, n, def_label, def_n)
+                    let t = self.tx("log.edge_spike", &[("decker", self.v.decker.clone())]);
+                    self.log(t, "edge");
+                    self.edge_roll(&spike, att_label, n, def_label, def_n)
                 } else {
                     self.opposed(
                         "decker",
-                        "Datenspike",
+                        &spike,
                         att_label,
                         n,
                         Some(self.d.attack),
@@ -833,113 +852,103 @@ impl<'a, R: Rng> Gen<'a, R> {
                     let ice = &mut self.v.ice[idx];
                     ice.hp = ice.hp.saturating_sub(dmg);
                     let crashed = ice.hp == 0;
-                    let name = ice.name.clone();
+                    let n = dmg.to_string();
                     if crashed {
-                        ice.status = if kind == IceKind::Spider {
-                            "abgeschüttelt".into()
+                        let t = if kind == IceKind::Spider {
+                            self.set_ice_status(idx, "shaken");
+                            self.tx("log.spider_out", &[])
                         } else {
-                            "gecrasht".into()
+                            self.set_ice_status(idx, "crashed");
+                            self.tx(
+                                "log.spike_crash",
+                                &[
+                                    ("n", n.clone()),
+                                    ("ice", name.clone()),
+                                    ("os", self.v.os.to_string()),
+                                ],
+                            )
                         };
-                        if kind == IceKind::Spider {
-                            self.log(
-                                "Die Spinne erleidet Dumpshock und fliegt aus dem Host!",
-                                "good",
-                            );
-                        } else {
-                            self.log(
-                                format!(
-                                    "Datenspike: {dmg} Schaden – {name} GECRASHT // OW {}",
-                                    self.v.os
-                                ),
-                                "good",
-                            );
-                        }
-                        self.show_roll(roll, format!("{dmg} SCHADEN // CRASH"), 1.6);
+                        self.log(t, "good");
+                        let v = self.tx("v.crash", &[("n", n)]);
+                        self.show_roll(roll, v, 1.6);
                     } else {
-                        self.log(format!("Datenspike: {dmg} Schaden an {name}",), "good");
-                        self.show_roll(roll, format!("{dmg} SCHADEN"), 1.5);
+                        let t =
+                            self.tx("log.spike_hit", &[("n", n.clone()), ("ice", name.clone())]);
+                        self.log(t, "good");
+                        let v = self.tx("v.dmg", &[("n", n)]);
+                        self.show_roll(roll, v, 1.5);
                     }
                 } else {
-                    self.log("Datenspike prallt ab", "bad");
-                    self.show_roll(roll, "KEIN DURCHKOMMEN", 1.3);
+                    let t = self.tx("log.spike_fail", &[]);
+                    self.log(t, "bad");
+                    let v = self.tx("v.no_through", &[]);
+                    self.show_roll(roll, v, 1.3);
                 }
             }
             self.v.nodes[3].status = "active".into();
         }
-        self.log("Sicherheitsknoten geräumt", "good");
+        let t = self.tx("log.ice_cleared", &[]);
+        self.log(t, "good");
     }
 
     fn ice_effect(&mut self, kind: IceKind, net: u8) -> String {
         let base: u8 = if self.r >= 6 { 2 } else { 1 };
-        let hold = |d: u8| {
-            if d == 0 {
-                " – Deck hält gerade noch"
-            } else {
-                ""
-            }
-        };
+        let name = self.ice_name(kind);
         match kind {
             IceKind::Killer | IceKind::Spider => {
                 let d = self.matrix_damage(base + net);
-                self.log(
-                    format!("{}: {d} Matrixschaden am Deck{}", kind.name(), hold(d)),
-                    "bad",
-                );
-                format!("{d} MATRIXSCHADEN")
+                let key = if d == 0 { "log.dmg_hold" } else { "log.dmg" };
+                let t = self.tx(key, &[("ice", name), ("n", d.to_string())]);
+                self.log(t, "bad");
+                self.tx("v.matrix_dmg", &[("n", d.to_string())])
             }
             IceKind::Black => {
                 let d = self.matrix_damage(base + net);
                 let s = self.stun_damage(if self.d.hot { base + net } else { net.max(1) });
                 self.v.link_locked = true;
-                self.log(
-                    format!("SCHWARZES IC! {d} Matrixschaden, {s} Biofeedback – Link gesperrt"),
-                    "bad",
+                let t = self.tx(
+                    "log.dmg_black",
+                    &[("n", d.to_string()), ("s", s.to_string())],
                 );
-                "BIOFEEDBACK + LINK-SPERRE".into()
+                self.log(t, "bad");
+                self.tx("v.black", &[])
             }
             IceKind::Blaster => {
                 let d = self.matrix_damage(base + net);
                 let s = self.stun_damage(net.max(1));
                 self.v.link_locked = true;
-                self.log(
-                    format!("Blaster: {d} Matrixschaden, {s} geistiger Schaden, Link gesperrt"),
-                    "bad",
+                let t = self.tx(
+                    "log.dmg_blaster",
+                    &[("n", d.to_string()), ("s", s.to_string())],
                 );
-                "BLASTER-TREFFER".into()
+                self.log(t, "bad");
+                self.tx("v.blaster", &[])
             }
             IceKind::Tar => {
                 self.v.link_locked = true;
-                self.log("Teerbaby klebt an der Persona – Link-Sperre!", "bad");
-                "LINK-SPERRE".into()
+                let t = self.tx("log.dmg_tar", &[]);
+                self.log(t, "bad");
+                self.tx("v.tar", &[])
             }
             IceKind::Acid => {
                 self.d.firewall = self.d.firewall.saturating_sub(1).max(1);
-                self.log(
-                    format!(
-                        "Säure-IC zerfrisst die Firewall (jetzt {})",
-                        self.d.firewall
-                    ),
-                    "bad",
-                );
-                "FIREWALL −1".into()
+                let t = self.tx("log.dmg_acid", &[("n", self.d.firewall.to_string())]);
+                self.log(t, "bad");
+                self.tx("v.acid", &[])
             }
             IceKind::Track => {
                 self.add_os(2 + net as u32);
-                self.log(
-                    format!("Aufspür-IC trianguliert den Standort – OW {}", self.v.os),
-                    "bad",
-                );
-                "SPUR GELEGT".into()
+                let t = self.tx("log.dmg_track", &[("os", self.v.os.to_string())]);
+                self.log(t, "bad");
+                self.tx("v.track", &[])
             }
             IceKind::Crash => {
                 if self.v.marks > 0 {
                     self.v.marks -= 1;
                 }
-                self.log(
-                    format!("Absturz-IC löscht eine Marke ({}/3)", self.v.marks),
-                    "bad",
-                );
-                "MARKE GELÖSCHT".into()
+                let t = self.tx("log.dmg_crash", &[("n", self.v.marks.to_string())]);
+                self.log(t, "bad");
+                self.tx("v.crash_ice", &[])
             }
             IceKind::Patrol => String::new(),
         }
@@ -947,19 +956,12 @@ impl<'a, R: Rng> Gen<'a, R> {
 
     fn search_and_crack(&mut self) {
         self.set_node(4, "active");
-        self.phase("MATRIXSUCHE", "Suche nach GEWINNER.DAT");
+        let t = self.tx("pt.search", &[]);
+        self.phase("search", t);
         let n = self.d.computer + self.d.intuition + self.hot();
-        let mut a = self.pool(
-            format!(
-                "Computer {} + Intuition {}{}",
-                self.d.computer,
-                self.d.intuition,
-                if self.d.hot { " + 2" } else { "" }
-            ),
-            n,
-            Some(self.d.dataproc),
-            false,
-        );
+        let label =
+            self.pool_label("pool.perception", self.d.computer, self.d.intuition) + &self.hot_mod();
+        let mut a = self.pool(label, n, Some(self.d.dataproc), false);
         if a.hits < 2 {
             for d in a
                 .dice
@@ -976,7 +978,7 @@ impl<'a, R: Rng> Gen<'a, R> {
         let roll = Roll {
             id: self.roll_id,
             actor: "decker".into(),
-            action: "Matrixsuche".into(),
+            action: self.tx("act.search", &[]),
             attacker: a,
             defender: None,
             threshold: Some(2),
@@ -987,50 +989,48 @@ impl<'a, R: Rng> Gen<'a, R> {
             success: true,
             verdict: String::new(),
         };
-        let folder = [
-            "/archiv/promo/2079",
-            "/marketing/raffle/vault",
-            "/kunden/glueck/register",
-            "/sys/lotto/ziehung",
-        ]
-        .choose(self.rng)
-        .copied()
-        .unwrap_or("/archiv");
-        self.log(
-            format!(
-                "Matrixsuche: GEWINNER.DAT in {folder} – {} Personas im Register",
-                self.v.participants
-            ),
-            "good",
+        let folder = self
+            .lx
+            .list("folders")
+            .choose(self.rng)
+            .cloned()
+            .unwrap_or_default();
+        let t = self.tx(
+            "log.search_ok",
+            &[("folder", folder), ("n", self.v.participants.to_string())],
         );
-        self.show_roll(roll, "DATEI GEFUNDEN", 1.5);
+        self.log(t, "good");
+        let v = self.tx("v.found_file", &[]);
+        self.show_roll(roll, v, 1.5);
 
         self.set_node(5, "active");
         // Datenbombe?
         if self.rng.gen_bool(0.45) {
             let bomb = self.rng.gen_range(2..=self.r.max(3));
-            self.phase(
-                "DATENBOMBE",
-                format!("Datenbombe Stufe {bomb} an der Datei"),
-            );
-            self.log(
-                format!("DATENBOMBE (Stufe {bomb}) an GEWINNER.DAT entdeckt!"),
-                "warn",
-            );
+            let b = bomb.to_string();
+            let t = self.tx("pt.bomb", &[("n", b.clone())]);
+            self.phase("bomb", t);
+            let t = self.tx("log.bomb_found", &[("n", b.clone())]);
+            self.log(t, "warn");
             self.push(1.0, Some(Sfx::Ice));
+            let act = self.tx("act.defuse", &[]);
+            let label = self.pool_label("pool.defuse", self.d.software, self.d.logic);
+            let def = self.tx("pool.bomb", &[("n", b)]);
             let roll = self.opposed(
                 "decker",
-                "Datenbombe entschärfen",
-                format!("Software {} + Logik {}", self.d.software, self.d.logic),
+                &act,
+                label,
                 self.d.software + self.d.logic + self.hot(),
                 Some(self.d.dataproc),
-                format!("Bombe {bomb} × 2"),
+                def,
                 bomb * 2,
                 false,
             );
             if roll.success {
-                self.log("Datenbombe entschärft – sauber", "good");
-                self.show_roll(roll, "ENTSCHÄRFT", 1.5);
+                let t = self.tx("log.bomb_defused", &[]);
+                self.log(t, "good");
+                let v = self.tx("v.defused", &[]);
+                self.show_roll(roll, v, 1.5);
             } else {
                 let boom: u8 = (0..bomb)
                     .map(|_| self.rng.gen_range(1..=6u8))
@@ -1038,30 +1038,26 @@ impl<'a, R: Rng> Gen<'a, R> {
                     .count() as u8
                     + 1;
                 let d = self.matrix_damage(boom);
-                if d > 0 {
-                    self.log(
-                        format!(
-                            "BOOM! Datenbombe detoniert: {d} Matrixschaden – Datei bleibt intakt"
-                        ),
-                        "bad",
-                    );
+                let t = if d > 0 {
+                    self.tx("log.bomb_boom", &[("n", d.to_string())])
                 } else {
-                    self.log(
-                        "BOOM! Datenbombe detoniert – Deck hält gerade noch, Datei bleibt intakt",
-                        "bad",
-                    );
-                }
-                self.show_roll(roll, "DETONIERT", 1.6);
+                    self.tx("log.bomb_boom_hold", &[])
+                };
+                self.log(t, "bad");
+                let v = self.tx("v.boom", &[]);
+                self.show_roll(roll, v, 1.6);
             }
         }
 
         // Absturz-IC kann Marken gelöscht haben → nachsetzen
         while self.v.marks < 3 {
-            let (def_label, def_n) = self.host_def(3, "Firewall");
+            let (def_label, def_n) = self.host_def(3, "firewall");
+            let act = self.tx("act.hack", &[]);
+            let label = self.pool_label("pool.hack", self.d.hacking, self.d.logic);
             let roll = self.opposed(
                 "decker",
-                "Eiliges Hacken",
-                format!("Hacking {} + Logik {}", self.d.hacking, self.d.logic),
+                &act,
+                label,
                 self.d.hacking + self.d.logic + self.hot(),
                 Some(self.d.sleaze),
                 def_label,
@@ -1070,24 +1066,24 @@ impl<'a, R: Rng> Gen<'a, R> {
             );
             self.add_os_hits(roll.defender.as_ref().map_or(0, |d| d.hits));
             self.v.marks += 1;
-            self.log(format!("Marke nachgesetzt ({}/3)", self.v.marks), "good");
-            self.show_roll(roll, format!("+1 MARKE ({}/3)", self.v.marks), 1.3);
+            let m = self.v.marks.to_string();
+            let t = self.tx("log.remark", &[("n", m.clone())]);
+            self.log(t, "good");
+            let v = self.tx("v.remark", &[("n", m)]);
+            self.show_roll(roll, v, 1.3);
         }
 
-        self.phase("DATEI CRACKEN", "Verschlüsselung von GEWINNER.DAT knacken");
+        let t = self.tx("pt.crack", &[]);
+        self.phase("crack", t);
         let (att_label, n) = (
-            format!(
-                "Hacking {} + Logik {}{}",
-                self.d.hacking,
-                self.d.logic,
-                if self.d.hot { " + 2" } else { "" }
-            ),
+            self.pool_label("pool.hack", self.d.hacking, self.d.logic) + &self.hot_mod(),
             self.d.hacking + self.d.logic + self.hot(),
         );
-        let def_label = format!("Verschlüsselung {} × 2", self.r);
+        let def_label = self.tx("pool.crypt", &[("r", self.r.to_string())]);
+        let act = self.tx("act.crack", &[]);
         let first = self.opposed(
             "decker",
-            "Datei cracken",
+            &act,
             att_label.clone(),
             n,
             Some(self.d.attack),
@@ -1097,18 +1093,18 @@ impl<'a, R: Rng> Gen<'a, R> {
         );
         self.add_os_hits(first.defender.as_ref().map_or(0, |d| d.hits));
         if !first.success {
-            self.log("Verschlüsselung hält – zweiter Anlauf", "bad");
-            self.show_roll(first, "HÄLT", 1.3);
+            let t = self.tx("log.crack_hold", &[]);
+            self.log(t, "bad");
+            let v = self.tx("v.holds", &[]);
+            self.show_roll(first, v, 1.3);
             let roll = if self.v.edge > 0 {
-                self.log(
-                    format!("EDGE! {} brennt den letzten Edge-Punkt", self.v.decker),
-                    "edge",
-                );
-                self.edge_roll("Datei cracken", att_label, n, def_label, self.r * 2)
+                let t = self.tx("log.edge_crack", &[("decker", self.v.decker.clone())]);
+                self.log(t, "edge");
+                self.edge_roll(&act, att_label, n, def_label, self.r * 2)
             } else {
                 self.opposed(
                     "decker",
-                    "Datei cracken",
+                    &act,
                     att_label,
                     n,
                     Some(self.d.attack),
@@ -1119,23 +1115,22 @@ impl<'a, R: Rng> Gen<'a, R> {
             };
             self.add_os_hits(roll.defender.as_ref().map_or(0, |d| d.hits));
             self.file_secured = true;
-            self.log(
-                format!("GEWINNER.DAT entschlüsselt // OW {}", self.v.os),
-                "good",
-            );
-            self.show_roll(roll, "GEKNACKT", 1.6);
+            let t = self.tx("log.cracked", &[("os", self.v.os.to_string())]);
+            self.log(t, "good");
+            let v = self.tx("v.cracked", &[]);
+            self.show_roll(roll, v, 1.6);
         } else {
             self.file_secured = true;
-            self.log(
-                format!("GEWINNER.DAT entschlüsselt // OW {}", self.v.os),
-                "good",
-            );
-            self.show_roll(first, "GEKNACKT", 1.6);
+            let t = self.tx("log.cracked", &[("os", self.v.os.to_string())]);
+            self.log(t, "good");
+            let v = self.tx("v.cracked", &[]);
+            self.show_roll(first, v, 1.6);
         }
     }
 
     fn decode(&mut self, participants: &[String], winners: &[String]) {
-        self.phase("DEKODIEREN", "Teilnehmerregister wird ausgelesen");
+        let t = self.tx("pt.decode_start", &[]);
+        self.phase("decode", t);
         self.v.nodes[5].status = "target".into();
         let is_winner = |n: &str| winners.iter().any(|w| w == n);
         // Alle Gewinner (max. 24) plus Nieten, damit etwas rausfliegen kann
@@ -1158,13 +1153,8 @@ impl<'a, R: Rng> Gen<'a, R> {
                 state: "offen".into(),
             })
             .collect();
-        self.log(
-            format!(
-                "Register geöffnet: {} Einträge werden dekodiert",
-                participants.len()
-            ),
-            "info",
-        );
+        let t = self.tx("log.register", &[("n", participants.len().to_string())]);
+        self.log(t, "info");
         self.push(1.2, Some(Sfx::Dice));
 
         let losers: Vec<usize> = (0..self.v.candidates.len())
@@ -1184,11 +1174,12 @@ impl<'a, R: Rng> Gen<'a, R> {
                 .iter()
                 .filter(|c| c.state == "offen")
                 .count();
-            let word = if left == 1 { "Kandidat" } else { "Kandidaten" };
-            self.phase(
-                "DEKODIEREN",
-                format!("Prüfsummen abgleichen … {left} {word} übrig"),
-            );
+            let t = if left == 1 {
+                self.tx("pt.decode_left1", &[])
+            } else {
+                self.tx("pt.decode_left", &[("n", left.to_string())])
+            };
+            self.phase("decode", t);
             self.push(0.9, Some(Sfx::Click));
         }
         for c in self.v.candidates.iter_mut() {
@@ -1200,45 +1191,45 @@ impl<'a, R: Rng> Gen<'a, R> {
 
     fn jack_out(&mut self) {
         self.set_node(6, "active");
-        self.phase("AUSSTÖPSELN", "Rückzug aus dem Host");
+        let t = self.tx("pt.jackout", &[]);
+        self.phase("jackout", t);
         let converge = self.v.os >= 32 && self.rng.gen_bool(0.3);
         if self.v.link_locked {
-            let (def_label, def_n) = self.host_def(0, "Angriff");
+            let (def_label, def_n) = self.host_def(0, "attack");
+            let act = self.tx("act.jackout", &[]);
+            let label = self.pool_label("pool.jackout", self.d.hacking, self.d.willpower);
             let roll = self.opposed(
                 "decker",
-                "Ausstöpseln (Link-Sperre)",
-                format!(
-                    "Hacking {} + Willenskraft {}",
-                    self.d.hacking, self.d.willpower
-                ),
+                &act,
+                label,
                 self.d.hacking + self.d.willpower,
                 None,
                 def_label,
                 def_n,
                 true,
             );
-            self.log("Link-Sperre gesprengt – Ausstöpseln!", "good");
-            self.show_roll(roll, "RAUS!", 1.4);
+            let t = self.tx("log.unlock", &[]);
+            self.log(t, "good");
+            let v = self.tx("v.out", &[]);
+            self.show_roll(roll, v, 1.4);
         }
         if converge {
             self.v.os = OS_MAX;
             self.v.converged = true;
-            self.log(
-                "GOD-KONVERGENZ! OW 40/40 – Deck gebrickt, Dumpshock!",
-                "bad",
-            );
-            self.log("… aber die Paydata war schon hochgeladen.", "edge");
+            let t = self.tx("log.converge", &[("max", OS_MAX.to_string())]);
+            self.log(t, "bad");
+            let t = self.tx("log.converge2", &[]);
+            self.log(t, "edge");
             self.v.matrix_cm = self.v.matrix_max;
-            self.phase("KONVERGENZ", "GOD schlägt zu – Paydata trotzdem gesichert");
+            let t = self.tx("pt.converge", &[]);
+            self.phase("converge", t);
             self.push(1.4, Some(Sfx::Glitch));
         } else {
-            self.log(
-                format!(
-                    "Ausgestöpselt bei OW {}/{} – sauber raus",
-                    self.v.os, OS_MAX
-                ),
-                "good",
+            let t = self.tx(
+                "log.out",
+                &[("os", self.v.os.to_string()), ("max", OS_MAX.to_string())],
             );
+            self.log(t, "good");
             self.push(1.0, Some(Sfx::Click));
         }
     }
@@ -1250,6 +1241,8 @@ pub struct RunSetup<'a> {
     pub winners: &'a [String],
     pub decker: &'a str,
     pub duration: f64,
+    /// Begriffe des gewählten Designs
+    pub lexicon: &'a Lexicon,
 }
 
 /// Erzeugt den kompletten Run. Das letzte Frame enthält die Gewinner.
@@ -1281,18 +1274,20 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
         hot,
     };
     let edge_max: u8 = rng.gen_range(3..=5);
+    let lx = s.lexicon;
+    let pick = |rng: &mut R, key: &str| lx.list(key).choose(rng).cloned().unwrap_or_default();
+    let host = pick(rng, "hosts");
+    let host_sculpt = pick(rng, "sculpts");
+    let deck = pick(rng, "decks");
     let v = RunView {
-        host: HOSTS.choose(rng).copied().unwrap_or("Host").into(),
-        host_sculpt: SCULPTS.choose(rng).copied().unwrap_or("").into(),
+        host,
+        host_sculpt,
         host_rating: r as u8,
         asdf: attrs,
         decker: s.decker.to_uppercase(),
-        deck: DECKS.choose(rng).copied().unwrap_or("Deck").into(),
-        sim: if hot {
-            "HEISS-SIM".into()
-        } else {
-            "KALT-SIM".into()
-        },
+        deck,
+        sim: lx.t(if hot { "sim.hot" } else { "sim.cold" }, &[]),
+        hot,
         os: 0,
         os_max: OS_MAX,
         marks: 0,
@@ -1302,19 +1297,19 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
         stun_max: 10,
         edge: edge_max,
         edge_max,
-        alert: "KEIN ALARM".into(),
+        alert: "none".into(),
         link_locked: false,
         combat_turn: 0,
         ice: vec![],
-        nodes: NODES
-            .iter()
-            .map(|l| NodeView {
-                label: (*l).into(),
+        nodes: (0..7)
+            .map(|i| NodeView {
+                label: lx.list("nodes").get(i).cloned().unwrap_or_default(),
                 status: "locked".into(),
             })
             .collect(),
         node: 0,
-        phase: "INIT".into(),
+        phase: String::new(),
+        phase_key: "init".into(),
         phase_text: String::new(),
         roll: None,
         log: vec![],
@@ -1327,6 +1322,7 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
     };
     let mut g = Gen {
         rng,
+        lx,
         v,
         d,
         r,
@@ -1361,22 +1357,27 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
         n.status = "done".into();
     }
     g.v.nodes[5].status = "target".into();
-    g.phase("PAYDATA", "Datei hochgeladen – Run abgeschlossen");
+    let t = g.tx("pt.done", &[]);
+    g.phase("done", t);
     let names: Vec<String> = s.winners.iter().take(6).map(|w| format!("@{w}")).collect();
     let more = s.winners.len().saturating_sub(6);
     let list = if more > 0 {
-        format!("{} und {more} weitere", names.join(", "))
+        g.tx(
+            "log.and_more",
+            &[("list", names.join(", ")), ("n", more.to_string())],
+        )
     } else {
         names.join(", ")
     };
-    if s.winners.len() == 1 {
-        g.log(format!("PAYDATA EXTRAHIERT // Gewinner: {list}"), "good");
+    let t = if s.winners.len() == 1 {
+        g.tx("log.win1", &[("list", list)])
     } else {
-        g.log(
-            format!("PAYDATA EXTRAHIERT // {} Gewinner: {list}", s.winners.len()),
-            "good",
-        );
-    }
+        g.tx(
+            "log.winN",
+            &[("list", list), ("n", s.winners.len().to_string())],
+        )
+    };
+    g.log(t, "good");
     g.push(0.0, Some(Sfx::Win1));
 
     // Zeitachse auf die gewünschte Dauer skalieren
@@ -1426,6 +1427,7 @@ mod tests {
                     winners: &winners,
                     decker: "areadox",
                     duration: dur,
+                    lexicon: &Lexicon::standard(),
                 },
             );
             let last = frames.last().unwrap();
@@ -1467,6 +1469,7 @@ mod tests {
                 winners: &["solo".to_string()],
                 decker: "x",
                 duration: 15.0,
+                lexicon: &Lexicon::standard(),
             },
         );
         assert_eq!(
@@ -1488,6 +1491,7 @@ mod tests {
                     winners: &winners,
                     decker: "x",
                     duration: 20.0,
+                    lexicon: &Lexicon::standard(),
                 },
             );
             let last = &frames.last().unwrap().view;
@@ -1500,6 +1504,81 @@ mod tests {
             assert_eq!(won.len(), n.min(24));
             assert!(last.candidates.iter().all(|c| c.state != "offen"));
             assert!(last.candidates.len() <= 24);
+        }
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+    use rand::SeedableRng;
+
+    /// Jedes eingebaute Design liefert vollständige Texte ohne offene Platzhalter.
+    #[test]
+    fn all_themes_render_clean_runs() {
+        let reg = crate::themes::registry();
+        let people: Vec<String> = (0..30).map(|i| format!("p{i}")).collect();
+        for (id, ..) in reg.list() {
+            let theme = reg.get(&id);
+            for seed in 0..60u64 {
+                let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+                let winners: Vec<String> = people
+                    .iter()
+                    .take(1 + (seed % 9) as usize)
+                    .cloned()
+                    .collect();
+                let frames = generate(
+                    &mut rng,
+                    RunSetup {
+                        participants: &people,
+                        winners: &winners,
+                        decker: "streamer",
+                        duration: [10.0, 25.0, 45.0][(seed % 3) as usize],
+                        lexicon: &theme.lexicon,
+                    },
+                );
+                let last = &frames.last().unwrap().view;
+                let mut texts: Vec<String> = last.log.iter().map(|l| l.text.clone()).collect();
+                for f in &frames {
+                    texts.push(f.view.phase.clone());
+                    texts.push(f.view.phase_text.clone());
+                    texts.push(f.view.sim.clone());
+                    texts.extend(f.view.nodes.iter().map(|n| n.label.clone()));
+                    texts.extend(
+                        f.view
+                            .ice
+                            .iter()
+                            .flat_map(|i| [i.name.clone(), i.status_text.clone()]),
+                    );
+                    if let Some(r) = &f.view.roll {
+                        texts.extend([
+                            r.action.clone(),
+                            r.verdict.clone(),
+                            r.attacker.label.clone(),
+                        ]);
+                        texts.extend(r.defender.iter().map(|d| d.label.clone()));
+                    }
+                }
+                for t in &texts {
+                    assert!(
+                        !t.contains('{') && !t.contains('}'),
+                        "{id}: offener Platzhalter in „{t}“"
+                    );
+                    assert!(
+                        !t.contains('.')
+                            || !t.starts_with(|c: char| c.is_ascii_lowercase())
+                            || t.contains(' '),
+                        "{id}: Schlüssel statt Text: {t}"
+                    );
+                }
+                assert_eq!(last.phase_key, "done");
+                assert!(!last.phase.is_empty(), "{id}: Phasenname");
+                assert_eq!(last.nodes.len(), 7);
+                assert!(
+                    last.nodes.iter().all(|n| !n.label.is_empty()),
+                    "{id}: Knotennamen"
+                );
+            }
         }
     }
 }
@@ -1524,6 +1603,7 @@ mod print {
                 winners: &["user3".to_string()],
                 decker: "areadox",
                 duration: 30.0,
+                lexicon: &Lexicon::standard(),
             },
         );
         for f in &frames {

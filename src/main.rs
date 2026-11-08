@@ -13,6 +13,7 @@ mod overlay;
 mod prize;
 mod sound;
 mod sso;
+mod themes;
 mod tray;
 mod twitch;
 

@@ -1,0 +1,25 @@
+/* EVE Online – nüchterne Schiffs-UI: tiefes Blauschwarz, Cyan, ISK-Gold,
+   harte Kanten und dünne Linien. */
+:root{
+  --ink:#05080c; --ink2:#0b1218; --line:#25394a;
+  --text:#d8e4ec; --muted:#7f95a6;
+  --decker:#5cc8e0; --host:#e24a35; --glitch:#ff7a2f; --edge:#9fb8ff; --gold:#f2c14e;
+  --font:"Exo 2","Bahnschrift","Segoe UI",sans-serif;
+  --font-head:"Exo 2","Bahnschrift",sans-serif;
+  --panel-bg:linear-gradient(180deg,rgba(11,18,24,.94),rgba(5,8,12,.92));
+  --panel-border:1px solid var(--line);
+  --panel-radius:0px;
+  --panel-shadow:inset 0 1px 0 rgba(92,200,224,.18);
+  --panel-pattern:linear-gradient(90deg,rgba(92,200,224,.5) 0 40px,transparent 40px) top left/100% 2px no-repeat,
+                  radial-gradient(circle at 85% 0%,rgba(92,200,224,.08),transparent 45%);
+  --chip-pattern:linear-gradient(90deg,rgba(92,200,224,.5) 0 28px,transparent 28px) top left/100% 2px no-repeat;
+  --winner-bg:rgba(5,8,12,.96);
+  --portrait-overlay:linear-gradient(180deg,transparent 60%,rgba(5,8,12,.5));
+  --die-bg:#d8e4ec; --die-pip:#0b1218; --die-radius:2px;
+  --track:#14212c; --box-line:#3a556b;
+  --node-fill:rgba(5,8,12,.95); --node-locked:#2c4152; --node-label-locked:#4f6a7f;
+  --tag-radius:0px;
+}
+.hostname,.winner small,.phase em,.actor{text-transform:uppercase;letter-spacing:.08em}
+.winner{border-width:1px;border-top:3px solid var(--gold)}
+.marks i{transform:none;border-radius:50%}

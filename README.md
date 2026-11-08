@@ -18,15 +18,22 @@ Aktuelle Version: **0.0.9** (Releases: siehe [GitHub](https://github.com/areadox
   - Overwatch-Wert bis zur GOD-Konvergenz bei 40, Matrix- und geistiger Zustandsmonitor, Edge (Sechser explodieren), Datenbomben, Link-Sperre beim Ausstöpseln
   - Heiß-Sim oder Kalt-Sim, zufälliger Host mit Stufe und ASDF-Attributen
   - Teilnehmerregister wird dekodiert, bis nur der Gewinner übrig ist
+- **Designs für verschiedene Spiele:** Overlay und Timer-Anzeige gibt es in mehreren Designs, jeweils mit eigenem Look (Farben, Schrift, Knotenform) und eigenen Begriffen. Der Würfelablauf bleibt gleich. Auswahl unter *Einstellungen → Design* oder im Dock; „Vorschau“ zeigt einen Demo-Run.
+  - **Shadowrun – Matrix-Run** (Standard): Decker, Marken, IC, Overwatch
+  - **EVE Online – Data-Site:** Kapselpilot hackt eine Site, Zugriff, Verteidigungsknoten, Lokal-Kanal, Gank
+  - **WoW-Stil – Schatzkammer-Raub:** Schurke im Dungeon, Schlösser, Wächter, Aggro, Loot
+  - **Palia-Stil – Schatzsuche im Dorf:** helles Cozy-Design, Hinweise, Hindernisse, Dorftratsch
+  - **Anime – Turm des Schicksals:** Siegel, Schergen, Rivale, Kraft der Freundschaft
+  - Eigene Designs siehe [Eigene Designs](#eigene-designs)
 - **Mehrere Gewinner:** Die Anzahl ist im Programmfenster, im Dock und unter *Einstellungen → Preise* einstellbar. Gezogen wird ohne Doppelte. Gibt es weniger Teilnehmer als Gewinner, gewinnen alle.
 - **Preise:** eine Beschreibung („Was gibt es zu gewinnen?“) und/oder eine Preisliste. Mit Liste bekommt Gewinner 1 Preis 1, Gewinner 2 Preis 2 usw. (Reihenfolge per ▲/▼); ohne Liste gilt die Beschreibung für alle. Der Preis erscheint im Overlay, in der Timer-Anzeige, im Dock, im Chat und im Verlauf.
 - **Preise aus den EVE-Assets:** Nach der EVE-Anmeldung lädt das Tool deine Assets mit Icon, Menge und Ort (Station/Struktur, Container, Schiff), durchsuchbar; ein Klick markiert ein Item als Preis. Einrichtung siehe unten.
 - **Fairness:** Die Gewinner werden vor dem Run gleichverteilt per Zufall gezogen. Der Run ist nur Inszenierung und endet immer erfolgreich.
 - **OBS-Overlay** (Browserquelle, transparent):
   - `http://localhost:8766` live
-  - `http://localhost:8766/test` Demo-Schleife zum Einrichten (`/test?winners=3` zeigt mehrere Gewinner mit Beispielpreisen)
+  - `http://localhost:8766/test` Demo-Schleife zum Einrichten (`/test?winners=3` zeigt mehrere Gewinner mit Beispielpreisen, `/test?theme=eve` ein bestimmtes Design)
   - `http://localhost:8766/dock` Bedien-Dock für OBS (siehe unten)
-  - `http://localhost:8766/timer` kleine Timer-Anzeige (z. B. 520 × 110): Countdown bis zum nächsten Giveaway, offene Teilnahme mit Keyword, laufender Run, Gewinner; Vorschau mit `/timer?demo=1`. Bei ausgeschaltetem Auto-Giveaway ist sie nur während eines Giveaways sichtbar.
+  - `http://localhost:8766/timer` kleine Timer-Anzeige (z. B. 520 × 110): Countdown bis zum nächsten Giveaway, offene Teilnahme mit Keyword, laufender Run, Gewinner; Vorschau mit `/timer?demo=1` (auch `&theme=…`). Bei ausgeschaltetem Auto-Giveaway ist sie nur während eines Giveaways sichtbar.
   - Wer nur die Timer-Anzeige nutzt, kann die große Teilnahme-Anzeige („Host-Zugang offen“) im Overlay abschalten (`overlay_show_open`, im Programm und im Dock). Matrix-Run und Gewinner erscheinen weiterhin.
   - `?view=graph` nur Host und Würfel, `?view=log` nur Charakterbogen und Protokoll, `?hide=1` blendet den Verbindungshinweis aus
 - **Chat-Bot:** Start-, End- und Gewinnernachricht über einen Bot-Account (OAuth-Token).
@@ -120,12 +127,32 @@ Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). 
 | `start_in_tray` | beim Start nur im Tray (Linux: minimiert) (Standard: `true`) |
 | `close_to_tray` | Fenster-X schließt in den Tray, Windows (Standard: `true`) |
 | `overlay_show_open` | große Teilnahme-Anzeige im Overlay zeigen (Standard: `true`) |
+| `theme` | Design von Overlay und Timer: `shadowrun`, `eve`, `wow`, `palia`, `anime` oder der Ordnername eines eigenen Designs (Standard: `shadowrun`) |
 | `eve_sso_refresh_token`, `eve_sso_character_id`, `eve_sso_character_name` | EVE-Anmeldung (wird vom Programm gesetzt) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`, `{prize}`). Fehlt `{prize}`, wird der Preis automatisch angehängt; bei mehreren Gewinnern geht je Gewinner eine Nachricht raus (ab 11 Gewinnern eine Sammelliste). |
 | `sound` | Soundeffekte im Programm |
 | `eve_enabled`, `eve_command`, `eve_api_url`, `eve_api_key`, `eve2twitch_bot_name` | EVE-Modus |
 
 > Das OAuth-Token steht im Klartext in `config.json`. Die Datei deshalb nicht weitergeben oder ins Repository einchecken (sie steht in `.gitignore`).
+
+## Eigene Designs
+
+Beim ersten Start legt das Programm neben der .exe den Ordner `themes/` an. Darin liegen eine vollständige Vorlage (`_vorlage/`) und eine Anleitung (`LIESMICH.txt`).
+
+1. `themes/_vorlage` kopieren und umbenennen, z. B. in `themes/meinspiel` (nur `a–z`, `0–9`, `-`, `_`).
+2. `theme.json` anpassen:
+   - `name`, `description`
+   - `font_url` (Google Fonts)
+   - `shape`: Knotenform, eine von `hex`, `ring`, `diamond`, `circle`, `star`
+   - `ui`: Beschriftungen von Overlay und Timer
+   - `texts`: alle Texte des Runs
+   - `lists`: 7 Stationen, Ziele, Ausrüstung, Fundorte und optional Demo-Namen und Demo-Preise
+3. `theme.css` anpassen: Farben, Schrift, Rahmen und Würfel über CSS-Variablen; darunter sind beliebige weitere CSS-Regeln erlaubt.
+4. Im Programm oder Dock auf **Designs neu laden** klicken und das Design auswählen.
+
+Alles ist optional, denn fehlende Einträge kommen aus dem Standard-Design. Es reicht also, nur ein paar Texte oder nur die Farben zu ändern. Platzhalter wie `{decker}`, `{host}`, `{n}` oder `{kw}` werden beim Run ersetzt; welche ein Text kennt, steht in der Vorlage. Fehler in eigenen Designs erscheinen im Log.
+
+Ein neues eingebautes Design braucht nur einen Ordner unter `assets/themes/<id>/` und eine Zeile in `BUILTIN` in `src/themes.rs`. Der Test prüft dann automatisch, ob Texte, Platzhalter und Listen vollständig sind.
 
 ## Bauen
 
@@ -143,6 +170,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 | Datei | Inhalt |
 |---|---|
 | `src/matrix.rs` | Generator für den Matrix-Run (Würfelregeln, Phasen, IC) |
+| `src/themes.rs` + `assets/themes/` | Designs: Begriffe (`theme.json`) und Look (`theme.css`), eigene Designs aus `themes/` |
 | `src/engine.rs` | Spielablauf, Countdown, Chat-Verarbeitung, Overlay-Status |
 | `src/overlay.rs` + `assets/overlay.html` | Webserver (axum/WebSocket) und OBS-Overlay |
 | `src/gui.rs` | Programmfenster (egui) |
@@ -153,12 +181,13 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 | `src/tray.rs` | Programm-Icon und Tray-Symbol (Windows) |
 | `src/db.rs`, `src/config.rs`, `src/sound.rs` | Datenbank, Konfiguration, Soundeffekte |
 
-*Shadowrun* ist eine Marke der Topps Company, Inc. Dieses Tool ist ein inoffizielles Fanprojekt und nutzt nur allgemeine Spielbegriffe; Hosts, Decks und Texte sind frei erfunden.
+*Shadowrun* ist eine Marke der Topps Company, Inc. Dieses Tool ist ein inoffizielles Fanprojekt und nutzt nur allgemeine Spielbegriffe; Hosts, Decks und Texte sind frei erfunden. Das gilt auch für die Designs im Stil von *EVE Online* (CCP Games), *World of Warcraft* (Blizzard Entertainment) und *Palia* (Singularity 6): Es sind inoffizielle Fan-Designs ohne Logos oder Grafiken der Spiele.
 
 ## Versionen
 
 | Version | Änderungen |
 |---|---|
+| 0.0.10 | Designs für verschiedene Spiele (Shadowrun, EVE Online, WoW-Stil, Palia-Stil, Anime) mit eigenem Look und eigenen Begriffen für Overlay und Timer-Anzeige; Auswahl im Programm und im Dock, Vorschau; eigene Designs per Ordner `themes/` mit Vorlage |
 | 0.0.9 | Große Teilnahme-Anzeige im Overlay abschaltbar (für die Nutzung mit der Timer-Anzeige); Releases nur noch auf Anforderung |
 | 0.0.8 | Alle Einstellungen und Preise (inkl. EVE-Assets) im OBS-Dock; Start minimiert im Tray mit Tray-Menü, X schließt in den Tray (Windows); Programm-Icon |
 | 0.0.7 | EVE-Anmeldung: ein Rückruf aus einem älteren Anmeldeversuch bricht die laufende Anmeldung nicht mehr ab |

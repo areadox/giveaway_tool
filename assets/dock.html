@@ -91,7 +91,7 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
 .grp h3{margin:10px 0 6px;font-size:12px;font-weight:600;color:var(--decker)}
 .form{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;align-items:center}
 .form label{font-size:12px;color:var(--muted)}
-.form input[type=text],.form input[type=password],.form input[type=number],.form textarea,.pzrow input,.wide{width:100%;background:var(--field);border:1px solid var(--line);border-radius:2px;padding:5px 7px;font:inherit;font-size:13px;color:var(--text)}
+.form input[type=text],.form input[type=password],.form input[type=number],.form textarea,.form select,.pzrow input,.wide{width:100%;background:var(--field);border:1px solid var(--line);border-radius:2px;padding:5px 7px;font:inherit;font-size:13px;color:var(--text)}
 .form textarea{resize:vertical;min-height:44px}
 .form .chk{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)}
 .form .hint{grid-column:1/-1;font-size:11px;color:var(--muted)}
@@ -177,6 +177,12 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
       <label for="s_decker">Decker-Name</label><input type="text" id="s_decker" name="decker_name" placeholder="leer = Kanalname">
       <label class="chk"><input type="checkbox" name="sound"> Soundeffekte im Programm</label>
       <label class="chk"><input type="checkbox" name="overlay_show_open"> Große Teilnahme-Anzeige im Overlay (aus, wenn die Timer-Anzeige genutzt wird)</label>
+    </div>
+    <h3>Design (Overlay &amp; Timer)</h3>
+    <div class="form">
+      <label for="s_theme">Design</label><select id="s_theme" name="theme"></select>
+      <div class="hint" id="s_theme_hint">Eigene Designs: Ordner „themes“ neben der .exe (Vorlage liegt dort).
+        <a href="#" id="themepreview">Vorschau</a> · <a href="#" id="themereload">Designs neu laden</a></div>
     </div>
     <h3>Auto-Giveaway</h3>
     <div class="form">
@@ -360,6 +366,10 @@ let cfgDirty=false;
 cfgForm.addEventListener('input',()=>{cfgDirty=true;$('cfgmsg').textContent='';});
 function fillSettings(c){
   if(cfgDirty)return;
+  const sel=$('s_theme'),list=c.themes||[];
+  const key=list.map(t=>t.id+t.name).join('|');
+  if(sel.dataset.key!==key){sel.dataset.key=key;
+    sel.innerHTML=list.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}${t.builtin?'':' (eigenes)'}</option>`).join('');}
   for(const el of cfgForm.elements){
     if(!el.name)continue;
     if(el.type==='checkbox')el.checked=!!c[el.name];
@@ -397,6 +407,9 @@ cfgForm.addEventListener('submit',async ev=>{
   if(r.ok){cfgDirty=false;msg('cfgmsg','Gespeichert.',true);}
   else msg('cfgmsg',r.error||'Nicht gespeichert.',false);
 });
+$('themepreview').onclick=ev=>{ev.preventDefault();window.open(`/test?theme=${encodeURIComponent($('s_theme').value)}`,'_blank');};
+$('themereload').onclick=async ev=>{ev.preventDefault();const r=await cmd({cmd:'reloadthemes'});
+  msg('cfgmsg',r.ok?'Designs neu geladen.':(r.error||'Fehler'),r.ok);};
 $('cfgreset').onclick=()=>{cfgDirty=false;$('cfgmsg').textContent='';if(S&&S.settings)fillSettings(S.settings);};
 
 // ---------------------------------------------------------------- Preise
