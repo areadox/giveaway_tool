@@ -103,7 +103,7 @@ pub struct RunView {
     pub log: Vec<LogLine>,
     pub candidates: Vec<Candidate>,
     pub participants: usize,
-    pub winner: String,
+    pub winners: Vec<String>,
     pub converged: bool,
     pub overall: f32,
     pub done: bool,
@@ -1134,18 +1134,22 @@ impl<'a, R: Rng> Gen<'a, R> {
         }
     }
 
-    fn decode(&mut self, participants: &[String], winner: &str) {
+    fn decode(&mut self, participants: &[String], winners: &[String]) {
         self.phase("DEKODIEREN", "Teilnehmerregister wird ausgelesen");
         self.v.nodes[5].status = "target".into();
+        let is_winner = |n: &str| winners.iter().any(|w| w == n);
+        // Alle Gewinner (max. 24) plus Nieten, damit etwas rausfliegen kann
+        let shown_winners: Vec<String> = winners.iter().take(24).cloned().collect();
+        let fill = (shown_winners.len() + 4).clamp(12, 24) - shown_winners.len();
         let mut others: Vec<String> = participants
             .iter()
-            .filter(|p| p.as_str() != winner)
+            .filter(|p| !is_winner(p))
             .cloned()
             .collect();
         others.shuffle(self.rng);
-        others.truncate(11);
+        others.truncate(fill);
         let mut names = others;
-        names.push(winner.to_string());
+        names.extend(shown_winners);
         names.shuffle(self.rng);
         self.v.candidates = names
             .iter()
@@ -1164,7 +1168,7 @@ impl<'a, R: Rng> Gen<'a, R> {
         self.push(1.2, Some(Sfx::Dice));
 
         let losers: Vec<usize> = (0..self.v.candidates.len())
-            .filter(|&i| self.v.candidates[i].name != winner)
+            .filter(|&i| !is_winner(&self.v.candidates[i].name))
             .collect();
         let steps = losers.len().clamp(1, 4);
         let mut order = losers.clone();
@@ -1187,8 +1191,10 @@ impl<'a, R: Rng> Gen<'a, R> {
             );
             self.push(0.9, Some(Sfx::Click));
         }
-        if let Some(c) = self.v.candidates.iter_mut().find(|c| c.name == winner) {
-            c.state = "gewinner".into();
+        for c in self.v.candidates.iter_mut() {
+            if is_winner(&c.name) {
+                c.state = "gewinner".into();
+            }
         }
     }
 
@@ -1240,12 +1246,13 @@ impl<'a, R: Rng> Gen<'a, R> {
 
 pub struct RunSetup<'a> {
     pub participants: &'a [String],
-    pub winner: &'a str,
+    /// Bereits fair gezogene Gewinner (in Reihenfolge Preis 1, 2, …)
+    pub winners: &'a [String],
     pub decker: &'a str,
     pub duration: f64,
 }
 
-/// Erzeugt den kompletten Run. Das letzte Frame enthält den Gewinner.
+/// Erzeugt den kompletten Run. Das letzte Frame enthält die Gewinner.
 pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
     let r: u32 = rng.gen_range(4..=7);
     let mut attrs = [r as u8, r as u8 + 1, r as u8 + 2, r as u8 + 3];
@@ -1313,7 +1320,7 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
         log: vec![],
         candidates: vec![],
         participants: s.participants.len(),
-        winner: String::new(),
+        winners: vec![],
         converged: false,
         overall: 0.0,
         done: false,
@@ -1342,11 +1349,11 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
     g.marks(3);
     g.ice_fights(ice_count);
     g.search_and_crack();
-    g.decode(s.participants, s.winner);
+    g.decode(s.participants, s.winners);
     g.jack_out();
 
     // Abschluss
-    g.v.winner = s.winner.to_string();
+    g.v.winners = s.winners.to_vec();
     g.v.done = true;
     g.v.roll = None;
     g.set_node(6, "done");
@@ -1355,10 +1362,21 @@ pub fn generate<R: Rng>(rng: &mut R, s: RunSetup<'_>) -> Vec<Frame> {
     }
     g.v.nodes[5].status = "target".into();
     g.phase("PAYDATA", "Datei hochgeladen – Run abgeschlossen");
-    g.log(
-        format!("PAYDATA EXTRAHIERT // Gewinner: @{}", s.winner),
-        "good",
-    );
+    let names: Vec<String> = s.winners.iter().take(6).map(|w| format!("@{w}")).collect();
+    let more = s.winners.len().saturating_sub(6);
+    let list = if more > 0 {
+        format!("{} und {more} weitere", names.join(", "))
+    } else {
+        names.join(", ")
+    };
+    if s.winners.len() == 1 {
+        g.log(format!("PAYDATA EXTRAHIERT // Gewinner: {list}"), "good");
+    } else {
+        g.log(
+            format!("PAYDATA EXTRAHIERT // {} Gewinner: {list}", s.winners.len()),
+            "good",
+        );
+    }
     g.push(0.0, Some(Sfx::Win1));
 
     // Zeitachse auf die gewünschte Dauer skalieren
@@ -1399,18 +1417,19 @@ mod tests {
         for seed in 0..400u64 {
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
             let winner = people[(seed as usize) % people.len()].clone();
+            let winners = vec![winner.clone()];
             let dur = [10.0, 25.0, 45.0][(seed % 3) as usize];
             let frames = generate(
                 &mut rng,
                 RunSetup {
                     participants: &people,
-                    winner: &winner,
+                    winners: &winners,
                     decker: "areadox",
                     duration: dur,
                 },
             );
             let last = frames.last().unwrap();
-            assert_eq!(last.view.winner, winner);
+            assert_eq!(last.view.winners, winners);
             assert!(last.view.done);
             assert!((last.t - dur).abs() < 1e-9);
             assert!(frames.windows(2).all(|w| w[0].t <= w[1].t), "Zeit monoton");
@@ -1445,12 +1464,43 @@ mod tests {
             &mut rng,
             RunSetup {
                 participants: &people,
-                winner: "solo",
+                winners: &["solo".to_string()],
                 decker: "x",
                 duration: 15.0,
             },
         );
-        assert_eq!(frames.last().unwrap().view.winner, "solo");
+        assert_eq!(
+            frames.last().unwrap().view.winners,
+            vec!["solo".to_string()]
+        );
+    }
+
+    #[test]
+    fn several_winners() {
+        let people: Vec<String> = (0..40).map(|i| format!("p{i}")).collect();
+        for n in [2usize, 5, 30, 40] {
+            let winners: Vec<String> = people.iter().take(n).cloned().collect();
+            let mut rng = rand::rngs::StdRng::seed_from_u64(n as u64);
+            let frames = generate(
+                &mut rng,
+                RunSetup {
+                    participants: &people,
+                    winners: &winners,
+                    decker: "x",
+                    duration: 20.0,
+                },
+            );
+            let last = &frames.last().unwrap().view;
+            assert_eq!(last.winners, winners);
+            let won: Vec<&Candidate> = last
+                .candidates
+                .iter()
+                .filter(|c| c.state == "gewinner")
+                .collect();
+            assert_eq!(won.len(), n.min(24));
+            assert!(last.candidates.iter().all(|c| c.state != "offen"));
+            assert!(last.candidates.len() <= 24);
+        }
     }
 }
 
@@ -1471,7 +1521,7 @@ mod print {
             &mut rng,
             RunSetup {
                 participants: &people,
-                winner: "user3",
+                winners: &["user3".to_string()],
                 decker: "areadox",
                 duration: 30.0,
             },

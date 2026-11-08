@@ -37,6 +37,18 @@ pub struct Config {
     pub auto_interval: String,
     /// Wie lange der Gewinner im Auto-Modus stehen bleibt (Sekunden).
     pub auto_winner_hold: f64,
+    /// Anzahl der Gewinner pro Giveaway.
+    pub winners: u32,
+    /// Freitext, was es zu gewinnen gibt (überschreibt die Kurzfassung der Preisliste).
+    pub prize_text: String,
+    /// Preisliste: Gewinner 1 bekommt Preis 1 usw.
+    pub prizes: Vec<crate::prize::Prize>,
+    /// Client-ID der eigenen EVE-Developer-App (für den Asset-Abruf).
+    pub eve_sso_client_id: String,
+    /// Refresh-Token der EVE-Anmeldung (wie das OAuth-Token: nicht weitergeben).
+    pub eve_sso_refresh_token: String,
+    pub eve_sso_character_id: Option<i64>,
+    pub eve_sso_character_name: String,
     /// Unbekannte Schlüssel bleiben beim Speichern erhalten.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -66,6 +78,13 @@ impl Default for Config {
             auto_enabled: false,
             auto_interval: "30:00".into(),
             auto_winner_hold: 20.0,
+            winners: 1,
+            prize_text: String::new(),
+            prizes: Vec::new(),
+            eve_sso_client_id: String::new(),
+            eve_sso_refresh_token: String::new(),
+            eve_sso_character_id: None,
+            eve_sso_character_name: String::new(),
             decker_name: String::new(),
             extra: Map::new(),
         }
@@ -151,6 +170,8 @@ pub fn load(path: &Path) -> Config {
                 (Some(Value::String(_)), Value::String(_)) => true,
                 (Some(Value::Bool(_)), Value::Bool(_)) => true,
                 (Some(Value::Number(_)), Value::Number(_)) => true,
+                (Some(Value::Array(_)), Value::Array(_)) => true,
+                (Some(Value::Number(_) | Value::Null), Value::Null) => true,
                 (Some(Value::String(s)), Value::Number(_)) => {
                     if let Ok(n) = s.trim().parse::<f64>() {
                         map.insert(k.clone(), serde_json::json!(n));
@@ -255,5 +276,27 @@ mod tests {
         assert!(!c.sound);
         assert_eq!(c.hack_duration, 30.0);
         assert!(c.extra.contains_key("foo"));
+        assert_eq!(c.winners, 1);
+    }
+
+    #[test]
+    fn keeps_prizes_and_sso() {
+        let dir = std::env::temp_dir().join(format!("cg-test-p-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("config.json");
+        let mut c = Config::default();
+        c.winners = 3;
+        c.prizes = vec![crate::prize::Prize {
+            name: "Gila".into(),
+            quantity: 1,
+            type_id: Some(17715),
+            ..Default::default()
+        }];
+        c.eve_sso_character_id = Some(2112625428);
+        save(&p, &c).unwrap();
+        let back = load(&p);
+        assert_eq!(back.winners, 3);
+        assert_eq!(back.prizes, c.prizes);
+        assert_eq!(back.eve_sso_character_id, Some(2112625428));
     }
 }

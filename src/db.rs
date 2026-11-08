@@ -32,6 +32,14 @@ impl User {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistoryRow {
+    pub winner: String,
+    pub played_at: String,
+    pub participants: i64,
+    pub prize: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct NewUser {
     pub twitch_login: String,
@@ -108,6 +116,13 @@ impl Db {
                 id INTEGER PRIMARY KEY AUTOINCREMENT, winner TEXT NOT NULL,
                 played_at TEXT NOT NULL, participant_count INTEGER NOT NULL);",
         )?;
+        // Ab 0.0.5: Preis je Gewinner (ältere Datenbanken werden ergänzt)
+        let has_prize = c
+            .prepare("SELECT prize FROM giveaway_history LIMIT 0")
+            .is_ok();
+        if !has_prize {
+            c.execute_batch("ALTER TABLE giveaway_history ADD COLUMN prize TEXT;")?;
+        }
         Ok(db)
     }
 
@@ -189,22 +204,34 @@ impl Db {
         Ok(())
     }
 
-    pub fn add_history(&self, winner: &str, count: usize) -> Result<(), DbError> {
+    pub fn add_history(
+        &self,
+        winner: &str,
+        count: usize,
+        prize: Option<&str>,
+    ) -> Result<(), DbError> {
         self.conn()?.execute(
-            "INSERT INTO giveaway_history(winner,played_at,participant_count) VALUES(?,?,?)",
-            params![winner, now_iso(), count as i64],
+            "INSERT INTO giveaway_history(winner,played_at,participant_count,prize) VALUES(?,?,?,?)",
+            params![winner, now_iso(), count as i64, prize],
         )?;
         Ok(())
     }
 
-    pub fn history(&self, limit: usize) -> Vec<(String, String, i64)> {
+    pub fn history(&self, limit: usize) -> Vec<HistoryRow> {
         let Ok(c) = self.conn() else { return vec![] };
-        let Ok(mut st) = c.prepare("SELECT winner, played_at, participant_count FROM giveaway_history ORDER BY id DESC LIMIT ?") else {
+        let Ok(mut st) = c.prepare("SELECT winner, played_at, participant_count, prize FROM giveaway_history ORDER BY id DESC LIMIT ?") else {
             return vec![];
         };
-        st.query_map([limit as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-            .map(|it| it.filter_map(Result::ok).collect())
-            .unwrap_or_default()
+        st.query_map([limit as i64], |r| {
+            Ok(HistoryRow {
+                winner: r.get(0)?,
+                played_at: r.get(1)?,
+                participants: r.get(2)?,
+                prize: r.get(3)?,
+            })
+        })
+        .map(|it| it.filter_map(Result::ok).collect())
+        .unwrap_or_default()
     }
 
     /// CSV-Export mit BOM (öffnet sauber in Excel), Komma-getrennt wie das Original.
@@ -264,8 +291,13 @@ mod tests {
             ..Default::default()
         });
         assert!(matches!(e, Err(DbError::Duplicate)));
-        db.add_history("areadox // daulin", 3).unwrap();
-        assert_eq!(db.history(5).len(), 1);
+        db.add_history("areadox // daulin", 3, Some("1× Gila"))
+            .unwrap();
+        let h = db.history(5);
+        assert_eq!(h.len(), 1);
+        assert_eq!(h[0].prize.as_deref(), Some("1× Gila"));
+        // Öffnen einer bereits migrierten Datenbank klappt erneut
+        Db::open(&p).unwrap();
         db.delete_user("areadox").unwrap();
         assert!(db.get_user("areadox").is_none());
         let _ = std::fs::remove_file(&p);

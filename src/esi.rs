@@ -135,7 +135,7 @@ pub fn validate_character(name: &str) -> Result<EveInfo, String> {
     Ok(info)
 }
 
-fn percent_encode(s: &str) -> String {
+pub fn percent_encode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {

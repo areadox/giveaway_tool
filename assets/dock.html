@@ -48,11 +48,16 @@ button,input{font:inherit;color:inherit}
 .feedback{font-size:12px;color:var(--glitch);min-height:0}
 .feedback:empty{display:none}
 
+.winners{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}
 .winner{display:flex;align-items:center;gap:10px;border:1px solid var(--gold);background:rgba(255,209,102,.07);padding:8px 10px;border-radius:3px}
-.winner img{width:52px;height:52px;object-fit:cover;border:1px solid var(--gold)}
+.winner img.ph{width:44px;height:44px;object-fit:cover;border:1px solid var(--gold);flex:none}
 .winner small{display:block;color:var(--gold);font-size:12px}
-.winner strong{display:block;font-size:18px;overflow-wrap:anywhere}
-.winner span{display:block;color:var(--decker);font-size:13px}
+.winner strong{display:block;font-size:17px;overflow-wrap:anywhere}
+.winner span{display:block;color:var(--decker);font-size:12px}
+.winner .pz{color:var(--gold);display:flex;align-items:center;gap:5px}
+.winner .pz img{width:18px;height:18px}
+.prizebox{border:1px solid var(--line);background:var(--panel);padding:8px 10px;border-radius:3px;font-size:13px;color:var(--gold)}
+.prizebox span{color:var(--muted)}
 
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);background:var(--panel);padding:8px 10px;border-radius:3px}
 .row .t{font-weight:600}
@@ -103,10 +108,9 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
 </div>
 <div id="feedback" class="feedback" role="alert"></div>
 
-<div id="winner" class="winner" hidden>
-  <img id="wimg" alt="" hidden>
-  <div><small>Gewinner</small><strong id="wname"></strong><span id="weve" hidden></span></div>
-</div>
+<div id="prizebox" class="prizebox" hidden></div>
+
+<div id="winners" class="winners" hidden></div>
 
 <div class="row">
   <div><div class="t">Auto-Giveaway</div><div id="autod" class="d">aus</div></div>
@@ -119,6 +123,7 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
     <label for="kw">Keyword</label><input id="kw" autocomplete="off">
     <label for="dur">Dauer</label><input id="dur" autocomplete="off" placeholder="mm:ss">
     <label for="hack">Run (s)</label><input id="hack" autocomplete="off" inputmode="decimal">
+    <label for="wn">Gewinner</label><input id="wn" type="number" min="1" max="100" step="1">
     <div class="hint">Gilt für den nächsten Klick auf START oder BREACH. Dauer 0 = Ende per Hand.</div>
   </div>
 </details>
@@ -134,7 +139,7 @@ const TONE={green:'var(--decker)',red:'var(--host)',cyan:'var(--decker)',yellow:
 const clock=s=>{s=Math.max(0,Math.ceil(s));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;};
 let S=null, online=false, endAt=0, total=0, mode='none', armedUntil=0, filled=false;
 const edited=new Set();
-['kw','dur','hack'].forEach(id=>$(id).addEventListener('input',()=>edited.add(id)));
+['kw','dur','hack','wn'].forEach(id=>$(id).addEventListener('input',()=>edited.add(id)));
 
 async function send(body){
   $('feedback').textContent='';
@@ -144,8 +149,9 @@ async function send(body){
   }catch(e){$('feedback').textContent='Giveaway-Tool nicht erreichbar.';}
 }
 const kw=()=>$('kw').value.trim()||(S&&S.keyword)||'!join';
-$('toggle').onclick=()=>send({cmd:'toggle',keyword:kw(),duration:$('dur').value.trim()||(S?S.duration:'5:00')});
-$('breach').onclick=()=>send({cmd:'breach',keyword:kw(),hack:$('hack').value.trim()||String(S?S.hack:30)});
+const wn=()=>{const n=parseInt($('wn').value,10);return Number.isFinite(n)&&n>=1?Math.min(n,100):undefined;};
+$('toggle').onclick=()=>send({cmd:'toggle',keyword:kw(),duration:$('dur').value.trim()||(S?S.duration:'5:00'),winners:wn()});
+$('breach').onclick=()=>send({cmd:'breach',keyword:kw(),hack:$('hack').value.trim()||String(S?S.hack:30),winners:wn()});
 $('reset').onclick=()=>{
   // Zweiter Klick innerhalb von 3 s bestätigt – schützt vor Verklicken im Stream
   if(performance.now()<armedUntil){armedUntil=0;render();send({cmd:'reset'});return;}
@@ -164,6 +170,7 @@ function render(){
   if(!filled||!edited.has('kw'))$('kw').value=s.keyword;
   if(!filled||!edited.has('dur'))$('dur').value=s.duration;
   if(!filled||!edited.has('hack'))$('hack').value=s.hack;
+  if(!filled||!edited.has('wn'))$('wn').value=s.winners_count;
   filled=true;
 
   const open=s.phase==='open';
@@ -188,12 +195,19 @@ function render(){
   $('auto').checked=!!a.enabled;
   $('autod').textContent=!a.enabled?'aus':a.state==='wartet'?`alle ${s.auto_interval} · nächstes in ${clock(a.remaining)}`:`alle ${s.auto_interval} · Giveaway läuft`;
 
-  const w=s.phase==='winner'&&s.winner;
-  $('winner').hidden=!w;
-  if(w){$('wname').textContent='@'+s.winner;const e=s.winner_eve;
-    $('weve').hidden=!e;if(e){$('weve').textContent=[e.name,e.corp?`[${e.corp}]`:'',e.alliance?`<${e.alliance}>`:''].filter(Boolean).join(' ');}
+  const n=s.winners_count||1;
+  const prizeParts=[];
+  if(s.prize)prizeParts.push(`<span>Zu gewinnen:</span> ${esc(s.prize)}`);
+  if(n>1)prizeParts.push(`<span>${s.prize?'· ':''}${n} Gewinner</span>`);
+  $('prizebox').hidden=!prizeParts.length||s.phase==='winner';$('prizebox').innerHTML=prizeParts.join(' ');
+
+  const ws=s.phase==='winner'?(s.winners||[]):[];
+  $('winners').hidden=!ws.length;
+  $('winners').innerHTML=ws.map((w,i)=>{const e=w.eve;
     const pic=e&&e.id?`https://images.evetech.net/characters/${e.id}/portrait?size=64`:'';
-    if(pic&&$('wimg').getAttribute('src')!==pic)$('wimg').src=pic;$('wimg').hidden=!pic;}
+    const tick=e?[e.name,e.corp?`[${e.corp}]`:'',e.alliance?`<${e.alliance}>`:''].filter(Boolean).join(' '):'';
+    const pz=w.prize?`<span class="pz">${w.prize.icon?`<img src="${esc(w.prize.icon)}" alt="" onerror="this.remove()">`:''}${esc(w.prize.label)}</span>`:'';
+    return `<div class="winner">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.remove()">`:''}<div><small>${ws.length>1?`Gewinner ${i+1}`:'Gewinner'}</small><strong>@${esc(w.login)}</strong>${tick?`<span>${esc(tick)}</span>`:''}${pz}</div></div>`;}).join('');
 
   $('joined').hidden=!(open&&s.recent.length);
   $('joined').innerHTML=s.recent.map(n=>`<span>${esc(n)}</span>`).join('');
@@ -210,7 +224,6 @@ function tick(){
   $('prog').style.width=mode==='auto'&&total>0?`${Math.round(100*(1-rem/total))}%`:'0';
 }
 setInterval(tick,250);
-$('wimg').addEventListener('error',()=>{$('wimg').hidden=true;});
 
 let retry=500;
 function connect(){

@@ -93,6 +93,7 @@ impl OverlayServer {
                         .route("/dock", get(dock_page))
                         .route("/ws/dock", get(dock_ws))
                         .route("/api/dock", axum::routing::post(dock_cmd))
+                        .route("/eve/callback", get(eve_callback))
                         .with_state(AppState {
                             rx,
                             dock_rx,
@@ -173,7 +174,17 @@ async fn timer() -> impl IntoResponse {
     ([("Cache-Control", "no-store")], Html(TIMER_HTML))
 }
 
-async fn demo(State(st): State<AppState>) -> impl IntoResponse {
+#[derive(serde::Deserialize)]
+struct DemoQuery {
+    winners: Option<usize>,
+}
+
+/// Demo-Run mit Fantasienamen; `?winners=3` zeigt mehrere Gewinner mit Beispielpreisen.
+async fn demo(
+    State(st): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<DemoQuery>,
+) -> impl IntoResponse {
+    use rand::seq::SliceRandom;
     let names: Vec<String> = [
         "netghost",
         "chromefox",
@@ -187,27 +198,67 @@ async fn demo(State(st): State<AppState>) -> impl IntoResponse {
         "wageslave",
         "elfdecker",
         "dwarfrigger",
+        "ghostwire",
+        "redsamurai",
+        "smoothop",
+        "jackpoint",
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
-    let winner = names[rand::random::<usize>() % names.len()].clone();
+    let n = q.winners.unwrap_or(1).clamp(1, names.len());
+    let mut rng = rand::thread_rng();
+    let winners: Vec<String> = names.choose_multiple(&mut rng, n).cloned().collect();
     let decker = if st.decker.trim().is_empty() {
         "DEMO-DECKER".to_string()
     } else {
         st.decker.clone()
     };
-    let mut rng = rand::thread_rng();
     let frames = crate::matrix::generate(
         &mut rng,
         crate::matrix::RunSetup {
             participants: &names,
-            winner: &winner,
+            winners: &winners,
             decker: &decker,
             duration: 30.0,
         },
     );
-    Json(serde_json::json!({ "participants": names, "frames": frames, "winner": winner }))
+    // Beispielpreise mit echten EVE-Typ-IDs (für die Item-Icons)
+    let samples = [
+        ("Gila", 1u64, 17715i64),
+        ("Ishtar", 1, 12005),
+        ("PLEX", 500, 44992),
+        ("Nanite Repair Paste", 1500, 28668),
+        ("Rifter", 3, 587),
+    ];
+    let prizes: Vec<crate::prize::Prize> = samples
+        .iter()
+        .cycle()
+        .take(n)
+        .map(|(name, q, t)| crate::prize::Prize {
+            name: (*name).into(),
+            quantity: *q,
+            type_id: Some(*t),
+            ..Default::default()
+        })
+        .collect();
+    let list: Vec<serde_json::Value> = winners
+        .iter()
+        .enumerate()
+        .map(|(i, w)| {
+            serde_json::json!({
+                "login": w,
+                "eve": null,
+                "prize": crate::prize::for_winner(&prizes, "", i),
+            })
+        })
+        .collect();
+    Json(serde_json::json!({
+        "participants": names,
+        "frames": frames,
+        "winners": list,
+        "prize": crate::prize::summary(&prizes, ""),
+    }))
 }
 
 // ------------------------------------------------------------ Dock
@@ -258,6 +309,64 @@ async fn dock_cmd(
         Ok(()) => StatusCode::ACCEPTED.into_response(),
         Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "Giveaway-Tool beendet").into_response(),
     }
+}
+
+#[derive(serde::Deserialize)]
+struct CallbackQuery {
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+fn callback_page(title: &str, text: &str) -> Html<String> {
+    Html(format!(
+        r#"<!doctype html><html lang="de"><meta charset="utf-8"><title>{title}</title>
+<body style="font:16px/1.5 system-ui,sans-serif;background:#14112e;color:#e8e3ff;display:grid;place-items:center;height:100vh;margin:0">
+<div style="max-width:460px;padding:24px;border:1px solid #3a3170;border-left:3px solid #2ee6c5;background:#1b1740">
+<h1 style="font-size:20px;margin:0 0 8px">{title}</h1><p style="margin:0;color:#9a93c9">{text}</p></div></body></html>"#
+    ))
+}
+
+/// Rückkehr von der EVE-Anmeldung (nur vom selben PC).
+async fn eve_callback(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(st): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<CallbackQuery>,
+) -> Response {
+    if !addr.ip().is_loopback() {
+        return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
+    }
+    if let Some(err) = q.error {
+        let detail = q.error_description.unwrap_or(err);
+        return callback_page(
+            "Anmeldung abgebrochen",
+            &format!("EVE meldet: {}", html_escape(&detail)),
+        )
+        .into_response();
+    }
+    match (q.code, q.state) {
+        (Some(code), Some(state)) => {
+            let _ = st.cmd.send(Inbound::SsoCode { code, state });
+            callback_page(
+                "Anmeldung empfangen",
+                "Das Giveaway-Tool lädt jetzt deine Assets. Du kannst dieses Fenster schließen.",
+            )
+            .into_response()
+        }
+        _ => callback_page(
+            "Anmeldung unvollständig",
+            "Es kam kein Code von EVE zurück. Bitte im Tool erneut verbinden.",
+        )
+        .into_response(),
+    }
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(st): State<AppState>) -> impl IntoResponse {

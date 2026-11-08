@@ -9,7 +9,9 @@ use crate::db::{clean_login, Db, NewUser};
 use crate::esi;
 use crate::matrix::{self, Frame, RunSetup, RunView};
 use crate::overlay::OverlayServer;
+use crate::prize::{self, Prize, PrizeView};
 use crate::sound::{self, Sfx};
+use crate::sso::{self, AssetRow};
 use crate::twitch::{TwitchReader, TwitchSender};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
@@ -50,6 +52,17 @@ pub enum Inbound {
         ign: Option<String>,
     },
     /// Charakter-ID (und Ticker) wurde über ESI nachgeschlagen.
+    /// Callback der EVE-Anmeldung (vom Webserver)
+    SsoCode {
+        code: String,
+        state: String,
+    },
+    SsoLogin(Result<sso::Login, String>),
+    Assets {
+        result: Result<Vec<AssetRow>, String>,
+        /// neuer Refresh-Token, falls EVE ihn beim Auffrischen gewechselt hat
+        refresh: Option<String>,
+    },
     IdResolved {
         login: String,
         info: Option<esi::EveInfo>,
@@ -65,10 +78,14 @@ pub enum DockCmd {
     Toggle {
         keyword: String,
         duration: String,
+        #[serde(default)]
+        winners: Option<u32>,
     },
     Breach {
         keyword: String,
         hack: String,
+        #[serde(default)]
+        winners: Option<u32>,
     },
     Reset,
     /// Auto-Giveaway ein-/ausschalten (wird in config.json gespeichert)
@@ -145,7 +162,18 @@ struct ActiveRun {
     started: Instant,
     next: usize,
     log_seen: usize,
-    winner: String,
+    winners: Vec<String>,
+}
+
+/// Ein Gewinner mit Anzeigenamen, EVE-Daten und zugeordnetem Preis.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Winner {
+    pub login: String,
+    /// „login // EVE-Name“ für Programmfenster, Dock und Verlauf
+    #[serde(skip)]
+    pub display: String,
+    pub eve: Option<EveCard>,
+    pub prize: Option<PrizeView>,
 }
 
 struct GiveawayTimer {
@@ -166,8 +194,11 @@ struct OverlayState<'a> {
     timer_remaining: f64,
     timer_total: u64,
     run: Option<&'a RunView>,
+    /// erster Gewinner (für einfache Anzeigen)
     winner: &'a str,
-    winner_eve: Option<&'a EveCard>,
+    winners: Vec<Winner>,
+    winners_count: u32,
+    prize: String,
     status: &'a str,
     auto: AutoState,
 }
@@ -189,9 +220,7 @@ pub struct Engine {
     pub participants: Vec<String>,
     participant_set: HashSet<String>,
     pub active_keyword: String,
-    pub winner: String,
-    pub winner_display: String,
-    pub winner_eve: Option<EveCard>,
+    pub winners: Vec<Winner>,
     pub status: String,
     pub status_tone: Tone,
     pub countdown_text: String,
@@ -208,6 +237,12 @@ pub struct Engine {
     auto_total: u64,
     won_at: Option<Instant>,
     auto_last_sec: u64,
+    sso_pending: Option<sso::Pending>,
+    /// Geladene EVE-Assets für die Preisauswahl
+    pub assets: Vec<AssetRow>,
+    pub assets_status: String,
+    pub assets_loading: bool,
+    pub assets_version: u64,
     tx: Sender<Inbound>,
     rx: Receiver<Inbound>,
     reader: TwitchReader,
@@ -243,9 +278,7 @@ impl Engine {
             participants: vec![],
             participant_set: HashSet::new(),
             active_keyword: keyword,
-            winner: String::new(),
-            winner_display: String::new(),
-            winner_eve: None,
+            winners: Vec::new(),
             status: "BEREIT".into(),
             status_tone: Tone::Cyan,
             countdown_text: "—".into(),
@@ -262,6 +295,11 @@ impl Engine {
             auto_total: 0,
             won_at: None,
             auto_last_sec: u64::MAX,
+            sso_pending: None,
+            assets: Vec::new(),
+            assets_status: "Noch nicht geladen".into(),
+            assets_loading: false,
+            assets_version: 0,
             tx,
             rx,
             reader,
@@ -411,9 +449,7 @@ impl Engine {
         self.cancel_timer(true);
         self.participants.clear();
         self.participant_set.clear();
-        self.winner.clear();
-        self.winner_display.clear();
-        self.winner_eve = None;
+        self.winners.clear();
         self.run_view = None;
         self.phase = Phase::Open;
         self.set_status("TEILNAHME OFFEN", Tone::Green);
@@ -421,10 +457,23 @@ impl Engine {
             format!("EINGÄNGE OFFEN — Chat: {}", self.active_keyword),
             Tone::Green,
         );
-        let open = self
+        if !self.prize_summary().is_empty() {
+            let p = self.prize_summary();
+            self.log(format!("Zu gewinnen: {p}"), Tone::Cyan);
+        }
+        let prize = self.prize_summary();
+        let mut open = self
             .cfg
             .open_message
-            .replace("{keyword}", &self.active_keyword);
+            .replace("{keyword}", &self.active_keyword)
+            .replace("{prize}", &prize);
+        if !prize.is_empty() && !self.cfg.open_message.contains("{prize}") {
+            open.push_str(&format!(" Zu gewinnen: {prize}."));
+        }
+        let n = self.cfg.winners.max(1);
+        if n > 1 {
+            open.push_str(&format!(" {n} Gewinner."));
+        }
         if secs > 0 {
             self.sender.send(format!(
                 "{open} Dauer: {}.",
@@ -491,25 +540,35 @@ impl Engine {
 
     fn start_breach_inner(&mut self) {
         let mut rng = rand::thread_rng();
-        let winner = self
+        let wanted = self.cfg.winners.max(1) as usize;
+        if wanted > self.participants.len() {
+            self.log(
+                format!(
+                    "{wanted} Gewinner eingestellt, aber nur {} Teilnehmer – alle gewinnen.",
+                    self.participants.len()
+                ),
+                Tone::Yellow,
+            );
+        }
+        // Gleichverteilt ohne Zurücklegen; Reihenfolge = Preis 1, 2, …
+        let mut winners: Vec<String> = self
             .participants
-            .choose(&mut rng)
+            .choose_multiple(&mut rng, wanted)
             .cloned()
-            .unwrap_or_default();
+            .collect();
+        winners.shuffle(&mut rng);
         let duration = self.cfg.hack_duration.clamp(8.0, 600.0);
         let frames = matrix::generate(
             &mut rng,
             RunSetup {
                 participants: &self.participants,
-                winner: &winner,
+                winners: &winners,
                 decker: &self.cfg.decker(),
                 duration,
             },
         );
         self.phase = Phase::Running;
-        self.winner.clear();
-        self.winner_display.clear();
-        self.winner_eve = None;
+        self.winners.clear();
         self.set_status("MATRIX-RUN LÄUFT", Tone::Red);
         self.log(
             format!(
@@ -523,41 +582,118 @@ impl Engine {
             started: Instant::now(),
             next: 0,
             log_seen: 0,
-            winner,
+            winners,
         });
         self.dirty = true;
     }
 
-    fn finish_breach(&mut self, winner: String) {
-        let display = self.display_name(&winner);
-        self.winner = winner.clone();
-        self.winner_display = display.clone();
-        self.winner_eve = self
-            .db
-            .get_user(&winner)
-            .as_ref()
-            .and_then(EveCard::from_user);
-        if let Some(card) = &self.winner_eve {
-            if card.id.is_none() {
-                self.resolve_id(winner.clone(), card.name.clone());
+    fn finish_breach(&mut self, logins: Vec<String>) {
+        let mut winners = Vec::with_capacity(logins.len());
+        for (i, login) in logins.iter().enumerate() {
+            let eve = self
+                .db
+                .get_user(login)
+                .as_ref()
+                .and_then(EveCard::from_user);
+            if let Some(card) = &eve {
+                if card.id.is_none() {
+                    self.resolve_id(login.clone(), card.name.clone());
+                }
             }
+            winners.push(Winner {
+                login: login.clone(),
+                display: self.display_name(login),
+                eve,
+                prize: prize::for_winner(&self.cfg.prizes, &self.cfg.prize_text, i),
+            });
         }
+        self.winners = winners;
         self.phase = Phase::Won;
         self.set_status("BREACH ERFOLGREICH", Tone::Green);
-        self.log(
-            format!("BREACH ERFOLGREICH! Gewinner: @{display}"),
-            Tone::Yellow,
-        );
+        let count = self.participants.len();
+        let many = self.winners.len() > 1;
+        for (i, w) in self.winners.clone().iter().enumerate() {
+            let prize = w.prize.as_ref().map(|p| p.label.clone());
+            let head = if many {
+                format!("Gewinner {}: ", i + 1)
+            } else {
+                "BREACH ERFOLGREICH! Gewinner: ".into()
+            };
+            let tail = prize
+                .as_ref()
+                .map(|p| format!(" – Preis: {p}"))
+                .unwrap_or_default();
+            self.log(format!("{head}@{}{tail}", w.display), Tone::Yellow);
+            if let Err(e) = self.db.add_history(&w.display, count, prize.as_deref()) {
+                self.log(
+                    format!("Verlauf konnte nicht gespeichert werden: {e}"),
+                    Tone::Red,
+                );
+            }
+        }
         self.win_sound_at = Some(Instant::now() + Duration::from_millis(380));
         self.won_at = Some(Instant::now());
-        if let Err(e) = self.db.add_history(&display, self.participants.len()) {
-            self.log(
-                format!("Verlauf konnte nicht gespeichert werden: {e}"),
-                Tone::Red,
-            );
+        self.send_win_messages();
+        self.dirty = true;
+    }
+
+    /// Chat: je Gewinner eine Nachricht; bei sehr vielen eine Sammelnachricht.
+    fn send_win_messages(&mut self) {
+        let tpl = self.cfg.win_message.clone();
+        let line = |w: &Winner| {
+            let prize = w
+                .prize
+                .as_ref()
+                .map(|p| p.label.clone())
+                .unwrap_or_default();
+            let mut m = tpl.replace("{winner}", &w.login).replace("{prize}", &prize);
+            if !prize.is_empty() && !tpl.contains("{prize}") {
+                m.push_str(&format!(" Preis: {prize}"));
+            }
+            m
+        };
+        if self.winners.len() <= 10 {
+            for w in self.winners.clone() {
+                self.sender.send(line(&w));
+            }
+        } else {
+            let names: Vec<String> = self
+                .winners
+                .iter()
+                .map(|w| format!("@{}", w.login))
+                .collect();
+            for chunk in names.chunks(15) {
+                self.sender
+                    .send(format!("🎉 Gewinner: {}", chunk.join(", ")));
+            }
         }
-        self.sender
-            .send(self.cfg.win_message.replace("{winner}", &winner));
+    }
+
+    /// Kurzfassung, was es zu gewinnen gibt.
+    pub fn prize_summary(&self) -> String {
+        prize::summary(&self.cfg.prizes, &self.cfg.prize_text)
+    }
+
+    /// Gewinnerzahl ändern (Programmfenster/Dock) und speichern.
+    pub fn set_winners(&mut self, n: u32) {
+        let n = n.clamp(1, 100);
+        if n == self.cfg.winners {
+            return;
+        }
+        self.cfg.winners = n;
+        if let Err(e) = config::save(&config::config_path(), &self.cfg) {
+            self.log(format!("Gewinnerzahl nicht gespeichert: {e}"), Tone::Red);
+        }
+        self.dirty = true;
+    }
+
+    /// Preisliste/Beschreibung übernehmen und speichern.
+    pub fn set_prizes(&mut self, prizes: Vec<Prize>, text: String) {
+        self.cfg.prizes = prizes;
+        self.cfg.prize_text = text;
+        if let Err(e) = config::save(&config::config_path(), &self.cfg) {
+            self.log(format!("Preise nicht gespeichert: {e}"), Tone::Red);
+        }
         self.dirty = true;
     }
 
@@ -567,9 +703,7 @@ impl Engine {
         self.phase = Phase::Ready;
         self.participants.clear();
         self.participant_set.clear();
-        self.winner.clear();
-        self.winner_display.clear();
-        self.winner_eve = None;
+        self.winners.clear();
         self.run = None;
         self.run_view = None;
         self.win_sound_at = None;
@@ -706,7 +840,7 @@ impl Engine {
             run.log_seen = total_logs;
             self.run_view = Some(f.view.clone());
             if f.view.done {
-                finished = Some(run.winner.clone());
+                finished = Some(run.winners.clone());
             }
             run.next += 1;
             changed = true;
@@ -948,18 +1082,68 @@ impl Engine {
                     }
                     self.add_participant(&login);
                 }
+                Inbound::SsoCode { code, state } => self.sso_callback(code, state),
+                Inbound::SsoLogin(result) => match result {
+                    Ok(login) => {
+                        self.cfg.eve_sso_refresh_token = login.refresh_token.clone();
+                        self.cfg.eve_sso_character_id = Some(login.character_id);
+                        self.cfg.eve_sso_character_name = login.character_name.clone();
+                        if let Err(e) = config::save(&config::config_path(), &self.cfg) {
+                            self.log(format!("EVE-Anmeldung nicht gespeichert: {e}"), Tone::Red);
+                        }
+                        self.log(
+                            format!("Mit EVE verbunden: {}", login.character_name),
+                            Tone::Green,
+                        );
+                        self.assets_version += 1;
+                        self.start_asset_load(Some(login));
+                    }
+                    Err(e) => {
+                        self.assets_status = format!("Anmeldung fehlgeschlagen: {e}");
+                        self.assets_version += 1;
+                        self.log(format!("EVE-Anmeldung fehlgeschlagen: {e}"), Tone::Red);
+                    }
+                },
+                Inbound::Assets { result, refresh } => {
+                    self.assets_loading = false;
+                    if let Some(r) = refresh.filter(|r| *r != self.cfg.eve_sso_refresh_token) {
+                        self.cfg.eve_sso_refresh_token = r;
+                        let _ = config::save(&config::config_path(), &self.cfg);
+                    }
+                    match result {
+                        Ok(rows) => {
+                            self.assets_status = format!(
+                                "{} Einträge geladen ({})",
+                                prize::fmt_qty(rows.len() as u64),
+                                chrono::Local::now().format("%H:%M")
+                            );
+                            self.log(
+                                format!("EVE-Assets geladen: {} Einträge.", rows.len()),
+                                Tone::Cyan,
+                            );
+                            self.assets = rows;
+                        }
+                        Err(e) => {
+                            self.assets_status = format!("Laden fehlgeschlagen: {e}");
+                            self.log(format!("EVE-Assets nicht geladen: {e}"), Tone::Red);
+                        }
+                    }
+                    self.assets_version += 1;
+                    self.request_repaint();
+                }
                 Inbound::IdResolved { login, info, error } => match info {
                     Some(info) => {
                         self.log(
                             format!("EVE-Charakter-ID für @{login} ergänzt ({}).", info.id),
                             Tone::Dark,
                         );
-                        if login == self.winner {
-                            self.winner_eve = self
-                                .db
-                                .get_user(&login)
-                                .as_ref()
-                                .and_then(EveCard::from_user);
+                        let card = self
+                            .db
+                            .get_user(&login)
+                            .as_ref()
+                            .and_then(EveCard::from_user);
+                        for w in self.winners.iter_mut().filter(|w| w.login == login) {
+                            w.eve = card.clone();
                         }
                         self.refresh_igns();
                     }
@@ -1026,12 +1210,21 @@ impl Engine {
             } else {
                 None
             },
-            winner: &self.winner,
-            winner_eve: if self.cfg.hide_eve_names {
-                None
-            } else {
-                self.winner_eve.as_ref()
-            },
+            winner: self.winners.first().map_or("", |w| w.login.as_str()),
+            winners: self
+                .winners
+                .iter()
+                .map(|w| Winner {
+                    eve: if self.cfg.hide_eve_names {
+                        None
+                    } else {
+                        w.eve.clone()
+                    },
+                    ..w.clone()
+                })
+                .collect(),
+            winners_count: self.cfg.winners.max(1),
+            prize: self.prize_summary(),
             status: &self.status,
             auto: self.auto_state(),
         };
@@ -1063,11 +1256,25 @@ impl Engine {
 
     fn handle_dock(&mut self, cmd: DockCmd) {
         match cmd {
-            DockCmd::Toggle { keyword, duration } => {
+            DockCmd::Toggle {
+                keyword,
+                duration,
+                winners,
+            } => {
+                if let Some(n) = winners {
+                    self.set_winners(n);
+                }
                 self.log("Dock: START/STOP", Tone::Dark);
                 self.toggle_entries(&keyword, &duration);
             }
-            DockCmd::Breach { keyword, hack } => {
+            DockCmd::Breach {
+                keyword,
+                hack,
+                winners,
+            } => {
+                if let Some(n) = winners {
+                    self.set_winners(n);
+                }
                 self.log("Dock: BREACH", Tone::Dark);
                 self.start_breach(&keyword, &hack);
             }
@@ -1126,9 +1333,11 @@ impl Engine {
             "keyword": self.active_keyword,
             "duration": self.cfg.timer_duration,
             "hack": self.cfg.hack_duration,
-            "winner": self.winner,
-            "winner_display": self.winner_display,
-            "winner_eve": self.winner_eve,
+            "winners": self.winners.iter().map(|w| serde_json::json!({
+                "login": w.login, "display": w.display, "eve": w.eve, "prize": w.prize
+            })).collect::<Vec<_>>(),
+            "winners_count": self.cfg.winners.max(1),
+            "prize": self.prize_summary(),
             "auto": self.auto_state(),
             "auto_interval": self.cfg.auto_interval,
             "run": run,
@@ -1221,7 +1430,7 @@ impl Engine {
         if let Some(at) = self.win_sound_at {
             if Instant::now() >= at {
                 self.win_sound_at = None;
-                if !self.winner.is_empty() {
+                if !self.winners.is_empty() {
                     self.sfx(Sfx::Win2);
                 }
             }
@@ -1290,9 +1499,7 @@ impl Engine {
                     self.phase = Phase::Ready;
                     self.participants.clear();
                     self.participant_set.clear();
-                    self.winner.clear();
-                    self.winner_display.clear();
-                    self.winner_eve = None;
+                    self.winners.clear();
                     self.run_view = None;
                     self.set_status("AUTO-GIVEAWAY: WARTET", Tone::Cyan);
                 }
@@ -1335,6 +1542,127 @@ impl Engine {
                 }
             },
         }
+    }
+
+    // ------------------------------------------------------------ EVE-Assets
+
+    pub fn sso_connected(&self) -> bool {
+        !self.cfg.eve_sso_refresh_token.is_empty() && self.cfg.eve_sso_character_id.is_some()
+    }
+
+    /// Port, unter dem der Callback erreichbar ist (tatsächlicher Overlay-Port).
+    pub fn callback_port(&self) -> u16 {
+        self.overlay
+            .as_ref()
+            .and_then(|o| o.port)
+            .unwrap_or(self.cfg.web_port)
+    }
+
+    /// Startet die EVE-Anmeldung; liefert die URL, die im Browser geöffnet wird.
+    pub fn sso_begin(&mut self) -> Result<String, String> {
+        if self.cfg.eve_sso_client_id.trim().is_empty() {
+            return Err(
+                "Bitte zuerst die Client-ID deiner EVE-App eintragen und speichern.".into(),
+            );
+        }
+        if self.overlay.as_ref().and_then(|o| o.port).is_none() {
+            return Err(
+                "Der Webserver läuft nicht – ohne ihn kommt die Anmeldung nicht zurück.".into(),
+            );
+        }
+        let (url, pending) = sso::begin(&self.cfg.eve_sso_client_id, self.callback_port());
+        self.sso_pending = Some(pending);
+        self.assets_status = "Warte auf die Anmeldung im Browser …".into();
+        self.assets_version += 1;
+        self.log("EVE-Anmeldung im Browser gestartet.", Tone::Cyan);
+        Ok(url)
+    }
+
+    fn sso_callback(&mut self, code: String, state: String) {
+        let Some(pending) = self.sso_pending.take() else {
+            self.log(
+                "EVE-Anmeldung: unerwarteter Rückruf ignoriert.",
+                Tone::Yellow,
+            );
+            return;
+        };
+        if pending.state != state {
+            self.log(
+                "EVE-Anmeldung: Sicherheitsprüfung fehlgeschlagen (state). Bitte neu verbinden.",
+                Tone::Red,
+            );
+            return;
+        }
+        let client = self.cfg.eve_sso_client_id.clone();
+        let tx = self.tx.clone();
+        self.assets_status = "Anmeldung wird abgeschlossen …".into();
+        self.assets_version += 1;
+        std::thread::spawn(move || {
+            let _ = tx.send(Inbound::SsoLogin(sso::exchange(&client, &code, &pending)));
+        });
+    }
+
+    pub fn set_sso_client_id(&mut self, id: &str) {
+        let id = id.trim().to_string();
+        if id == self.cfg.eve_sso_client_id {
+            return;
+        }
+        self.cfg.eve_sso_client_id = id;
+        // Neue App → alte Anmeldung gehört zur alten App
+        self.cfg.eve_sso_refresh_token.clear();
+        self.cfg.eve_sso_character_id = None;
+        self.cfg.eve_sso_character_name.clear();
+        if let Err(e) = config::save(&config::config_path(), &self.cfg) {
+            self.log(format!("Client-ID nicht gespeichert: {e}"), Tone::Red);
+        }
+        self.assets_version += 1;
+    }
+
+    pub fn sso_logout(&mut self) {
+        self.cfg.eve_sso_refresh_token.clear();
+        self.cfg.eve_sso_character_id = None;
+        self.cfg.eve_sso_character_name.clear();
+        let _ = config::save(&config::config_path(), &self.cfg);
+        self.assets.clear();
+        self.assets_status = "Abgemeldet".into();
+        self.assets_version += 1;
+        self.log("EVE-Anmeldung entfernt.", Tone::Yellow);
+    }
+
+    /// Lädt die Assets neu (mit frischem Access-Token).
+    pub fn load_assets(&mut self) {
+        self.start_asset_load(None);
+    }
+
+    fn start_asset_load(&mut self, login: Option<sso::Login>) {
+        if self.assets_loading {
+            return;
+        }
+        if login.is_none() && !self.sso_connected() {
+            self.assets_status = "Nicht mit EVE verbunden".into();
+            self.assets_version += 1;
+            return;
+        }
+        self.assets_loading = true;
+        self.assets_status = "Assets werden geladen …".into();
+        self.assets_version += 1;
+        let client = self.cfg.eve_sso_client_id.clone();
+        let refresh_token = self.cfg.eve_sso_refresh_token.clone();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let (login, refresh) = match login {
+                Some(l) => (Ok(l), None),
+                None => match sso::refresh(&client, &refresh_token) {
+                    Ok(l) => {
+                        let r = Some(l.refresh_token.clone());
+                        (Ok(l), r)
+                    }
+                    Err(e) => (Err(format!("{e} – ggf. neu verbinden")), None),
+                },
+            };
+            let result = login.and_then(|l| sso::load_assets(&l));
+            let _ = tx.send(Inbound::Assets { result, refresh });
+        });
     }
 
     pub fn shutdown(&mut self) {
@@ -1455,7 +1783,8 @@ mod tests {
             std::thread::sleep(Duration::from_millis(50));
         }
         assert_eq!(e.phase, Phase::Won);
-        assert!(e.participants.contains(&e.winner));
+        assert_eq!(e.winners.len(), 1);
+        assert!(e.participants.contains(&e.winners[0].login));
         assert_eq!(e.db.history(5).len(), 1);
         let json = e.overlay_json();
         assert!(json.contains("\"mode\":\"winner\""));
@@ -1491,11 +1820,14 @@ mod tests {
         })
         .unwrap();
         e.tick();
-        e.finish_breach("areadox".into());
+        e.finish_breach(vec!["areadox".into()]);
         let json = e.overlay_json();
         assert!(json.contains("images.evetech.net/characters/2112625428/portrait"));
         assert!(json.contains("\"name\":\"daulin\""));
-        assert_eq!(e.winner_eve.as_ref().unwrap().corp.as_deref(), Some("ABC"));
+        assert_eq!(
+            e.winners[0].eve.as_ref().unwrap().corp.as_deref(),
+            Some("ABC")
+        );
         e.cfg.hide_eve_names = true;
         e.refresh_igns();
         let hidden = e.overlay_json();
@@ -1542,12 +1874,12 @@ mod tests {
         .unwrap();
         // Giveaway-Countdown endet → Run → Gewinner
         run_until(&mut e, 20, &|e| e.phase == Phase::Won);
-        assert_eq!(e.winner, "alice");
+        assert_eq!(e.winners[0].login, "alice");
         // nach der Gewinner-Anzeige beginnt der Countdown von vorn
         run_until(&mut e, 8, &|e| {
             e.phase == Phase::Ready && e.auto_state().state == "wartet"
         });
-        assert!(e.participants.is_empty() && e.winner.is_empty());
+        assert!(e.participants.is_empty() && e.winners.is_empty());
         // Ohne Teilnehmer endet das Giveaway und der Kreislauf geht weiter
         run_until(&mut e, 5, &|e| e.phase == Phase::Open);
         run_until(&mut e, 5, &|e| e.phase == Phase::Ready);
@@ -1585,6 +1917,97 @@ mod tests {
             ..e.cfg.clone()
         };
         assert!(e.apply_config(bad).is_err());
+        e.shutdown();
+    }
+
+    #[test]
+    fn several_winners_with_prizes() {
+        let dir = std::env::temp_dir().join(format!("cg-multi-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        let prizes = vec![
+            Prize {
+                name: "Gila".into(),
+                quantity: 1,
+                type_id: Some(17715),
+                ..Default::default()
+            },
+            Prize {
+                name: "PLEX".into(),
+                quantity: 500,
+                type_id: Some(44992),
+                ..Default::default()
+            },
+        ];
+        let cfg = Config {
+            web_port: 19166,
+            sound: false,
+            keyword: "!hack".into(),
+            hack_duration: 8.0,
+            winners: 3,
+            prizes,
+            ..Default::default()
+        };
+        let mut e = Engine::new(cfg, db);
+        assert_eq!(e.prize_summary(), "Gila, 500× PLEX");
+        e.toggle_entries("!hack", "0");
+        for u in ["a1", "a2", "a3", "a4", "a5"] {
+            e.tx.send(Inbound::Chat {
+                user: u.into(),
+                msg: "!hack".into(),
+            })
+            .unwrap();
+        }
+        e.tick();
+        let json = e.overlay_json();
+        assert!(json.contains("\"prize\":\"Gila, 500× PLEX\""));
+        assert!(json.contains("\"winners_count\":3"));
+        e.start_breach("!hack", "8");
+        let start = Instant::now();
+        while e.phase == Phase::Running && start.elapsed() < Duration::from_secs(15) {
+            e.tick();
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(e.phase, Phase::Won);
+        assert_eq!(e.winners.len(), 3);
+        let mut logins: Vec<&str> = e.winners.iter().map(|w| w.login.as_str()).collect();
+        logins.sort();
+        logins.dedup();
+        assert_eq!(logins.len(), 3, "keine doppelten Gewinner");
+        assert_eq!(e.winners[0].prize.as_ref().unwrap().label, "Gila");
+        assert!(e.winners[0]
+            .prize
+            .as_ref()
+            .unwrap()
+            .icon
+            .as_ref()
+            .unwrap()
+            .contains("/types/17715/"));
+        assert_eq!(e.winners[1].prize.as_ref().unwrap().label, "500× PLEX");
+        assert!(e.winners[2].prize.is_none());
+        let hist = e.db.history(10);
+        assert_eq!(hist.len(), 3);
+        assert_eq!(hist.iter().filter(|h| h.prize.is_some()).count(), 2);
+        let json = e.overlay_json();
+        assert_eq!(json.matches("\"login\"").count(), 3);
+        // Mehr Gewinner als Teilnehmer → alle gewinnen
+        e.reset();
+        e.set_winners(10);
+        e.toggle_entries("!hack", "0");
+        e.tx.send(Inbound::Chat {
+            user: "solo".into(),
+            msg: "!hack".into(),
+        })
+        .unwrap();
+        e.tick();
+        e.start_breach("!hack", "8");
+        let start = Instant::now();
+        while e.phase == Phase::Running && start.elapsed() < Duration::from_secs(15) {
+            e.tick();
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(e.winners.len(), 1);
+        assert_eq!(e.winners[0].login, "solo");
         e.shutdown();
     }
 

@@ -10,7 +10,9 @@ mod esi;
 mod gui;
 mod matrix;
 mod overlay;
+mod prize;
 mod sound;
+mod sso;
 mod twitch;
 
 use std::sync::{Arc, Mutex};

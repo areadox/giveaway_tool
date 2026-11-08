@@ -69,12 +69,13 @@ function bar(frac){let h='';const on=Math.round(Math.max(0,Math.min(1,frac))*30)
 function fromState(st){
   const a=st.auto||{enabled:false,state:'aus'};
   if(st.mode==='open'){
-    return {show:true,state:'open',label:`Zugang offen – schreibe <kbd>${esc(st.keyword||'!join')}</kbd>`,glyph:'!',
+    return {show:true,state:'open',label:`Schreibe <kbd>${esc(st.keyword||'!join')}</kbd>${st.prize?` · ${esc(st.prize)}`:' – Zugang offen'}`,glyph:'!',
       remaining:st.timer_active?st.timer_remaining:null,total:st.timer_total};
   }
   if(st.mode==='run')return {show:true,state:'run',label:'Matrix-Run läuft',glyph:'IC',value:'BREACH'};
-  if(st.mode==='winner')return {show:true,state:'winner',label:'Gewinner',glyph:'★',value:'@'+(st.winner||'')};
-  if(a.enabled&&a.state==='wartet')return {show:true,state:'wait',label:'Nächstes Giveaway in',glyph:'W6',remaining:a.remaining,total:a.total};
+  if(st.mode==='winner'){const ws=st.winners||[];const first=(ws[0]&&ws[0].login)||st.winner||'';
+    return {show:true,state:'winner',label:ws.length>1?`${ws.length} Gewinner`:(ws[0]&&ws[0].prize?`Gewinner · ${esc(ws[0].prize.label)}`:'Gewinner'),glyph:'★',value:'@'+first+(ws.length>1?` +${ws.length-1}`:'')};}
+  if(a.enabled&&a.state==='wartet')return {show:true,state:'wait',label:st.prize?`Nächstes Giveaway: ${esc(st.prize)}`:'Nächstes Giveaway in',glyph:'W6',remaining:a.remaining,total:a.total};
   return {show:false};
 }
 function apply(v){
@@ -109,10 +110,11 @@ function connect(){
 async function runDemo(){
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   for(;;){
-    apply(fromState({mode:'idle',auto:{enabled:true,state:'wartet',remaining:12,total:12}}));await wait(12000);
-    apply(fromState({mode:'open',keyword:'!hack',timer_active:true,timer_remaining:12,timer_total:12}));await wait(12000);
+    const prize='Gila';
+    apply(fromState({mode:'idle',prize,auto:{enabled:true,state:'wartet',remaining:12,total:12}}));await wait(12000);
+    apply(fromState({mode:'open',prize,keyword:'!hack',timer_active:true,timer_remaining:12,timer_total:12}));await wait(12000);
     apply(fromState({mode:'run'}));await wait(6000);
-    apply(fromState({mode:'winner',winner:'chromefox'}));await wait(5000);
+    apply(fromState({mode:'winner',winners:[{login:'chromefox',prize:{label:'Gila'}}]}));await wait(5000);
   }
 }
 if(demo)runDemo();else connect();

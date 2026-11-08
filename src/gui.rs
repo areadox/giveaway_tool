@@ -1,8 +1,9 @@
 //! Programmfenster (egui): Steuerung, Terminal, Einstellungen, Datenbank.
 
 use crate::config::Config;
-use crate::db::{NewUser, User};
+use crate::db::{HistoryRow, NewUser, User};
 use crate::engine::{Engine, Phase, Tone};
+use crate::prize::{fmt_qty, type_icon_url, Prize};
 use eframe::egui::{self, Color32, RichText, Stroke};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -31,6 +32,7 @@ fn tone(t: Tone) -> Color32 {
 enum Tab {
     General,
     Messages,
+    Prizes,
     Database,
     History,
 }
@@ -87,7 +89,15 @@ struct Settings {
     hack: String,
     error: Option<String>,
     rows: Vec<User>,
-    history: Vec<(String, String, i64)>,
+    history: Vec<HistoryRow>,
+    prizes: Vec<Prize>,
+    prize_text: String,
+    client_id: String,
+    asset_search: String,
+    assets_seen: u64,
+    manual_name: String,
+    manual_qty: u64,
+    prize_info: Option<String>,
     selected: Option<usize>,
     edit: Option<EditState>,
     confirm_delete: bool,
@@ -149,6 +159,14 @@ impl GuiApp {
             db_seen: e.db_version,
             info: None,
             show_token: false,
+            prizes: e.cfg.prizes.clone(),
+            prize_text: e.cfg.prize_text.clone(),
+            client_id: e.cfg.eve_sso_client_id.clone(),
+            asset_search: String::new(),
+            assets_seen: e.assets_version,
+            manual_name: String::new(),
+            manual_qty: 1,
+            prize_info: None,
         });
     }
 }
@@ -192,6 +210,7 @@ impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut open_settings = false;
         let mut action: Option<&'static str> = None;
+        let mut new_winners: Option<u32> = None;
         {
             let e = self.engine.lock().expect("engine");
             egui::TopBottomPanel::top("header")
@@ -234,6 +253,16 @@ impl eframe::App for GuiApp {
                         ui.label(RichText::new("RUN (s)").color(CYAN));
                         ui.add(egui::TextEdit::singleline(&mut self.hack).desired_width(50.0))
                             .on_hover_text("Dauer des Matrix-Runs im Overlay (mind. 8 Sekunden)");
+                        ui.add_space(10.0);
+                        ui.label(RichText::new("GEWINNER").color(CYAN));
+                        let mut n = e.cfg.winners.max(1);
+                        if ui
+                            .add(egui::DragValue::new(&mut n).range(1..=100))
+                            .on_hover_text("Anzahl der Gewinner pro Giveaway")
+                            .changed()
+                        {
+                            new_winners = Some(n);
+                        }
                     });
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("GIVEAWAY-DAUER").color(CYAN));
@@ -257,6 +286,10 @@ impl eframe::App for GuiApp {
                     ui.label(
                         RichText::new(format!("TEILNEHMER: {}", e.participants.len())).color(GREEN),
                     );
+                    let prize = e.prize_summary();
+                    if !prize.is_empty() {
+                        ui.label(RichText::new(format!("PREIS: {prize}")).color(YELLOW));
+                    }
                     if let Some(t) = e.auto_text() {
                         ui.label(RichText::new(format!("AUTO-GIVEAWAY: {t}")).color(CYAN));
                     }
@@ -269,40 +302,65 @@ impl eframe::App for GuiApp {
                             .color(MAGENTA),
                         );
                     }
-                    let winner = if e.winner_display.is_empty() {
-                        "—".to_string()
-                    } else {
-                        format!("@{}", e.winner_display.to_uppercase())
-                    };
-                    let blink = !e.winner.is_empty()
+                    let blink = !e.winners.is_empty()
                         && (ctx.input(|i| i.time) * 1000.0 / 450.0) as i64 % 2 == 0;
-                    ui.horizontal(|ui| {
-                        if let Some(id) = e.winner_eve.as_ref().and_then(|c| c.id) {
-                            portrait(ui, id, 64.0);
-                        }
-                        ui.vertical(|ui| {
-                            ui.label(
-                                RichText::new(format!("GEWINNER: {winner}"))
-                                    .color(if blink { RED } else { YELLOW })
-                                    .size(16.0)
-                                    .strong(),
-                            );
-                            if let Some(c) = &e.winner_eve {
-                                let tick = [
-                                    c.corp.as_ref().map(|t| format!("[{t}]")),
-                                    c.alliance.as_ref().map(|t| format!("<{t}>")),
-                                ]
-                                .into_iter()
-                                .flatten()
-                                .collect::<Vec<_>>()
-                                .join(" ");
-                                ui.label(
-                                    RichText::new(format!("EVE: {} {tick}", c.name)).color(CYAN),
-                                );
+                    if e.winners.is_empty() {
+                        ui.label(
+                            RichText::new("GEWINNER: —")
+                                .color(YELLOW)
+                                .size(16.0)
+                                .strong(),
+                        );
+                    }
+                    let many = e.winners.len() > 1;
+                    for (i, w) in e.winners.iter().take(5).enumerate() {
+                        ui.horizontal(|ui| {
+                            if let Some(id) = w.eve.as_ref().and_then(|c| c.id) {
+                                portrait(ui, id, if many { 40.0 } else { 64.0 });
                             }
+                            ui.vertical(|ui| {
+                                let head = if many {
+                                    format!("GEWINNER {}", i + 1)
+                                } else {
+                                    "GEWINNER".into()
+                                };
+                                ui.label(
+                                    RichText::new(format!("{head}: @{}", w.display.to_uppercase()))
+                                        .color(if blink { RED } else { YELLOW })
+                                        .size(if many { 14.0 } else { 16.0 })
+                                        .strong(),
+                                );
+                                let mut info = vec![];
+                                if let Some(c) = &w.eve {
+                                    let tick = [
+                                        c.corp.as_ref().map(|t| format!("[{t}]")),
+                                        c.alliance.as_ref().map(|t| format!("<{t}>")),
+                                    ]
+                                    .into_iter()
+                                    .flatten()
+                                    .collect::<Vec<_>>()
+                                    .join(" ");
+                                    info.push(format!("EVE: {} {tick}", c.name).trim().to_string());
+                                }
+                                if let Some(p) = &w.prize {
+                                    info.push(format!("Preis: {}", p.label));
+                                }
+                                if !info.is_empty() {
+                                    ui.label(RichText::new(info.join("  |  ")).color(CYAN));
+                                }
+                            });
                         });
-                    });
-                    if !e.winner.is_empty() {
+                    }
+                    if e.winners.len() > 5 {
+                        ui.label(
+                            RichText::new(format!(
+                                "… und {} weitere (siehe Protokoll und Verlauf)",
+                                e.winners.len() - 5
+                            ))
+                            .color(DIM),
+                        );
+                    }
+                    if !e.winners.is_empty() {
                         ctx.request_repaint_after(Duration::from_millis(150));
                     }
                     ui.add_space(4.0);
@@ -384,6 +442,9 @@ impl eframe::App for GuiApp {
                 });
         }
 
+        if let Some(n) = new_winners {
+            self.engine.lock().expect("engine").set_winners(n);
+        }
         match action {
             Some("toggle") => self
                 .engine
@@ -445,6 +506,7 @@ impl GuiApp {
                             for (t, label) in [
                                 (Tab::General, "Einstellungen"),
                                 (Tab::Messages, "Chat & EVE"),
+                                (Tab::Prizes, "Preise"),
                                 (Tab::Database, "Datenbank"),
                                 (Tab::History, "Verlauf"),
                             ] {
@@ -496,10 +558,22 @@ impl GuiApp {
                                                     if cfg.keyword.trim().is_empty() {
                                                         cfg.keyword = "!join".into();
                                                     }
-                                                    let res = engine
-                                                        .lock()
-                                                        .expect("engine")
-                                                        .apply_config(cfg.clone());
+                                                    let res = {
+                                                        let mut e = engine.lock().expect("engine");
+                                                        // Werte, die woanders gepflegt werden, nicht überschreiben
+                                                        cfg.winners = e.cfg.winners;
+                                                        cfg.prizes = e.cfg.prizes.clone();
+                                                        cfg.prize_text = e.cfg.prize_text.clone();
+                                                        cfg.eve_sso_client_id =
+                                                            e.cfg.eve_sso_client_id.clone();
+                                                        cfg.eve_sso_refresh_token =
+                                                            e.cfg.eve_sso_refresh_token.clone();
+                                                        cfg.eve_sso_character_id =
+                                                            e.cfg.eve_sso_character_id;
+                                                        cfg.eve_sso_character_name =
+                                                            e.cfg.eve_sso_character_name.clone();
+                                                        e.apply_config(cfg.clone())
+                                                    };
                                                     match res {
                                                         Ok(()) => {
                                                             saved_keyword = Some((
@@ -535,6 +609,7 @@ impl GuiApp {
                     .show(ctx, |ui| match st.tab {
                         Tab::General => general_tab(ui, st),
                         Tab::Messages => messages_tab(ui, st),
+                        Tab::Prizes => prizes_tab(ui, st, &engine),
                         Tab::Database => database_tab(ui, st, &engine),
                         Tab::History => history_tab(ui, st),
                     });
@@ -637,6 +712,13 @@ impl GuiApp {
             self.hack = h;
         }
         if close {
+            if let Some(st) = &self.settings {
+                let mut e = self.engine.lock().expect("engine");
+                let text = st.prize_text.trim().to_string();
+                if text != e.cfg.prize_text || st.prizes != e.cfg.prizes {
+                    e.set_prizes(st.prizes.clone(), text);
+                }
+            }
             self.settings = None;
         }
     }
@@ -923,19 +1005,328 @@ fn history_tab(ui: &mut egui::Ui, st: &mut Settings) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         egui::Grid::new("hist")
             .striped(true)
-            .num_columns(3)
+            .num_columns(4)
             .spacing([20.0, 6.0])
             .show(ui, |ui| {
-                ui.label(RichText::new("Zeitpunkt").color(CYAN).strong());
-                ui.label(RichText::new("Gewinner").color(CYAN).strong());
-                ui.label(RichText::new("Teilnehmer").color(CYAN).strong());
+                for t in ["Zeitpunkt", "Gewinner", "Preis", "Teilnehmer"] {
+                    ui.label(RichText::new(t).color(CYAN).strong());
+                }
                 ui.end_row();
-                for (w, at, n) in &st.history {
-                    ui.label(at.replace('T', " "));
-                    ui.label(RichText::new(w).color(YELLOW));
-                    ui.label(n.to_string());
+                for h in &st.history {
+                    ui.label(h.played_at.replace('T', " "));
+                    ui.label(RichText::new(&h.winner).color(YELLOW));
+                    ui.label(h.prize.as_deref().unwrap_or("—"));
+                    ui.label(h.participants.to_string());
                     ui.end_row();
                 }
             });
     });
+}
+
+fn type_icon(ui: &mut egui::Ui, type_id: i64, px: f32) {
+    ui.add(
+        egui::Image::new(type_icon_url(type_id, 64))
+            .fit_to_exact_size(egui::vec2(px, px))
+            .show_loading_spinner(false),
+    );
+}
+
+fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
+    let mut changed = false;
+    let (winners, connected, character, assets_status, loading, port) = {
+        let e = engine.lock().expect("engine");
+        if e.assets_version != st.assets_seen {
+            st.assets_seen = e.assets_version;
+        }
+        (
+            e.cfg.winners.max(1),
+            e.sso_connected(),
+            e.cfg.eve_sso_character_name.clone(),
+            e.assets_status.clone(),
+            e.assets_loading,
+            e.callback_port(),
+        )
+    };
+
+    // ---------------------------------------------------------- Gewinner & Beschreibung
+    egui::Grid::new("prize_head")
+        .num_columns(2)
+        .spacing([14.0, 8.0])
+        .show(ui, |ui| {
+            ui.label(RichText::new("Anzahl Gewinner").color(CYAN));
+            let mut n = winners;
+            if ui
+                .add(egui::DragValue::new(&mut n).range(1..=100))
+                .changed()
+            {
+                engine.lock().expect("engine").set_winners(n);
+            }
+            ui.end_row();
+            ui.label(RichText::new("Was gibt es zu gewinnen?").color(CYAN));
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut st.prize_text)
+                    .hint_text("leer = aus der Preisliste, z. B. „je 100 Mio. ISK“")
+                    .desired_width(f32::INFINITY),
+            );
+            if r.lost_focus() || (r.changed() && st.prize_text.is_empty()) {
+                changed = true;
+            }
+            ui.end_row();
+        });
+    ui.label(
+        RichText::new(
+            "Mit Preisliste bekommt Gewinner 1 den ersten Preis, Gewinner 2 den zweiten usw. Ohne Liste gilt die Beschreibung für alle Gewinner.",
+        )
+        .color(DIM)
+        .size(11.0),
+    );
+    if !st.prizes.is_empty() && st.prizes.len() != winners as usize {
+        ui.label(
+            RichText::new(format!(
+                "Hinweis: {} Preise, aber {} Gewinner eingestellt.",
+                st.prizes.len(),
+                winners
+            ))
+            .color(YELLOW)
+            .size(12.0),
+        );
+    }
+    ui.add_space(6.0);
+
+    // ---------------------------------------------------------- Preisliste
+    ui.label(RichText::new("Preisliste").color(GREEN).strong());
+    let mut remove = None;
+    let mut swap = None;
+    egui::ScrollArea::vertical().id_salt("prizelist").max_height(170.0).show(ui, |ui| {
+        if st.prizes.is_empty() {
+            ui.label(RichText::new("Noch keine Preise – unten aus den EVE-Assets wählen oder eigenen Preis eintragen.").color(DIM));
+        }
+        let len = st.prizes.len();
+        for (i, p) in st.prizes.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{:>2}.", i + 1)).color(DIM));
+                match p.type_id {
+                    Some(t) => type_icon(ui, t, 28.0),
+                    None => {
+                        ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::hover());
+                    }
+                }
+                if ui.add(egui::DragValue::new(&mut p.quantity).range(1..=u64::MAX).prefix("× ")).changed() {
+                    changed = true;
+                }
+                let r = ui.add(egui::TextEdit::singleline(&mut p.name).desired_width(220.0));
+                if r.lost_focus() {
+                    changed = true;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("Entfernen").clicked() {
+                        remove = Some(i);
+                    }
+                    if ui
+                        .add_enabled(i + 1 < len, egui::Button::new("▼").small())
+                        .on_hover_text("Nach unten (späterer Gewinner)")
+                        .clicked()
+                    {
+                        swap = Some((i, i + 1));
+                    }
+                    if ui
+                        .add_enabled(i > 0, egui::Button::new("▲").small())
+                        .on_hover_text("Nach oben (früherer Gewinner)")
+                        .clicked()
+                    {
+                        swap = Some((i - 1, i));
+                    }
+                    // Lagerort im verbleibenden Platz, bei Bedarf gekürzt
+                    if let Some(loc) = &p.location {
+                        ui.add(egui::Label::new(RichText::new(loc).color(DIM).size(11.0)).truncate())
+                            .on_hover_text(loc);
+                    }
+                });
+            });
+        }
+    });
+    if let Some(i) = remove {
+        st.prizes.remove(i);
+        changed = true;
+    }
+    if let Some((a, b)) = swap {
+        st.prizes.swap(a, b);
+        changed = true;
+    }
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Eigener Preis").color(CYAN));
+        ui.add(
+            egui::DragValue::new(&mut st.manual_qty)
+                .range(1..=u64::MAX)
+                .prefix("× "),
+        );
+        ui.add(
+            egui::TextEdit::singleline(&mut st.manual_name)
+                .hint_text("z. B. 500 Mio. ISK")
+                .desired_width(220.0),
+        );
+        if ui
+            .add_enabled(
+                !st.manual_name.trim().is_empty(),
+                egui::Button::new("Hinzufügen"),
+            )
+            .clicked()
+        {
+            st.prizes.push(Prize {
+                name: st.manual_name.trim().to_string(),
+                quantity: st.manual_qty.max(1),
+                ..Default::default()
+            });
+            st.manual_name.clear();
+            st.manual_qty = 1;
+            changed = true;
+        }
+    });
+    ui.separator();
+
+    // ---------------------------------------------------------- EVE-Assets
+    ui.label(RichText::new("Aus deinen EVE-Assets").color(GREEN).strong());
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Client-ID").color(CYAN));
+        ui.add(egui::TextEdit::singleline(&mut st.client_id).desired_width(260.0))
+            .on_hover_text("Client-ID deiner App auf developers.eveonline.com");
+        if ui.button("Übernehmen").clicked() {
+            engine
+                .lock()
+                .expect("engine")
+                .set_sso_client_id(&st.client_id);
+            st.prize_info = Some("Client-ID gespeichert.".into());
+        }
+        ui.hyperlink_to(
+            "developers.eveonline.com",
+            "https://developers.eveonline.com/applications",
+        );
+    });
+    let callback = crate::sso::callback_url(port);
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new("Callback-URL für die App:")
+                .color(DIM)
+                .size(11.0),
+        );
+        ui.label(RichText::new(&callback).size(11.0));
+        if ui.small_button("kopieren").clicked() {
+            ui.ctx().copy_text(callback.clone());
+        }
+    });
+    ui.label(
+        RichText::new(format!("Scopes der App: {}", crate::sso::SCOPES))
+            .color(DIM)
+            .size(11.0),
+    );
+    ui.horizontal(|ui| {
+        if connected {
+            ui.label(RichText::new(format!("Verbunden als {character}")).color(GREEN));
+            if ui
+                .add_enabled(!loading, egui::Button::new("Assets laden"))
+                .clicked()
+            {
+                engine.lock().expect("engine").load_assets();
+            }
+            if ui.button("Abmelden").clicked() {
+                engine.lock().expect("engine").sso_logout();
+            }
+        } else if ui
+            .button(RichText::new("Mit EVE verbinden").color(GREEN))
+            .clicked()
+        {
+            let res = engine.lock().expect("engine").sso_begin();
+            match res {
+                Ok(url) => ui.ctx().open_url(egui::OpenUrl::new_tab(url)),
+                Err(e) => st.prize_info = Some(e),
+            }
+        }
+        ui.label(RichText::new(&assets_status).color(if loading { YELLOW } else { DIM }));
+        if loading {
+            ui.spinner();
+        }
+    });
+    if let Some(info) = &st.prize_info {
+        ui.label(RichText::new(info).color(YELLOW).size(12.0));
+    }
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Suche").color(CYAN));
+        ui.add(
+            egui::TextEdit::singleline(&mut st.asset_search)
+                .hint_text("Name oder Ort")
+                .desired_width(260.0),
+        );
+    });
+
+    let rows: Vec<crate::sso::AssetRow> = {
+        let e = engine.lock().expect("engine");
+        let q = st.asset_search.trim().to_lowercase();
+        e.assets
+            .iter()
+            .filter(|a| {
+                q.is_empty()
+                    || a.name.to_lowercase().contains(&q)
+                    || a.location.to_lowercase().contains(&q)
+            })
+            .cloned()
+            .collect()
+    };
+    let in_list: std::collections::HashSet<i64> =
+        st.prizes.iter().filter_map(|p| p.item_id).collect();
+    let mut add: Option<crate::sso::AssetRow> = None;
+    egui_extras::TableBuilder::new(ui)
+        .id_salt("assets")
+        .striped(true)
+        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+        .column(egui_extras::Column::exact(34.0))
+        .column(egui_extras::Column::initial(230.0).resizable(true))
+        .column(egui_extras::Column::initial(80.0))
+        .column(egui_extras::Column::remainder().clip(true))
+        .column(egui_extras::Column::exact(96.0))
+        .header(20.0, |mut h| {
+            for t in ["", "Item", "Menge", "Ort", ""] {
+                h.col(|ui| {
+                    ui.label(RichText::new(t).color(CYAN).strong());
+                });
+            }
+        })
+        .body(|body| {
+            body.rows(32.0, rows.len(), |mut row| {
+                let a = &rows[row.index()];
+                row.col(|ui| type_icon(ui, a.type_id, 28.0));
+                row.col(|ui| {
+                    ui.label(&a.name);
+                });
+                row.col(|ui| {
+                    ui.label(fmt_qty(a.quantity));
+                });
+                row.col(|ui| {
+                    ui.label(RichText::new(&a.location).color(DIM).size(11.0))
+                        .on_hover_text(&a.location);
+                });
+                row.col(|ui| {
+                    if in_list.contains(&a.item_id) {
+                        ui.label(RichText::new("✓ Preis").color(GREEN));
+                    } else if ui.button("+ als Preis").clicked() {
+                        add = Some(a.clone());
+                    }
+                });
+            });
+        });
+    if let Some(a) = add {
+        st.prizes.push(Prize {
+            name: a.name,
+            quantity: a.quantity,
+            type_id: Some(a.type_id),
+            item_id: Some(a.item_id),
+            location: Some(a.location),
+        });
+        changed = true;
+    }
+    if changed {
+        engine
+            .lock()
+            .expect("engine")
+            .set_prizes(st.prizes.clone(), st.prize_text.trim().to_string());
+    }
 }

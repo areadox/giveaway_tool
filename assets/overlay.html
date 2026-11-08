@@ -137,6 +137,23 @@ canvas{width:100%;height:100%;display:block}
 .weve{margin-top:8px;font-size:clamp(18px,1.8vw,28px);color:var(--decker);font-weight:600}
 .weve span{color:var(--muted);font-weight:500;margin-left:10px}
 .winner.has-pic strong{font-size:clamp(32px,4.6vw,76px)}
+.wprize{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:clamp(16px,1.6vw,24px);color:var(--gold);font-weight:600}
+.winner:not(.has-pic) .wprize{justify-content:center}
+.wprize img,.wcard .pz img{width:1.6em;height:1.6em;border:1px solid var(--line);background:var(--ink2)}
+.winner.multi{min-width:min(1180px,94vw);max-height:90vh;overflow:hidden;text-align:left}
+.winner.multi>small{text-align:center}
+.wlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:16px}
+.wcard{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:center;padding:10px;border:1px solid var(--line);background:rgba(22,18,56,.8)}
+.wcard .ph{grid-row:1/4;width:64px;height:64px;border:1px solid var(--gold);object-fit:cover;background:var(--ink2)}
+.wcard .ph.none{display:grid;place-items:center;color:var(--gold);font-weight:700;font-size:22px}
+.wcard b{font-size:20px;overflow-wrap:anywhere;color:var(--text)}
+.wcard .ev{color:var(--decker);font-size:14px}
+.wcard .pz{display:flex;align-items:center;gap:6px;color:var(--gold);font-size:14px;font-weight:600}
+.wcard .no{color:var(--muted);font-size:12px;font-weight:600}
+.wmore{margin-top:10px;text-align:center;color:var(--muted)}
+.prize{grid-column:1/-1;margin-top:12px;font-size:clamp(16px,1.5vw,22px);line-height:1.35;color:var(--gold);font-weight:600}
+.prize span{color:var(--muted);font-weight:500;margin-right:6px}
+.prize em{font-style:normal;color:var(--text);margin-left:10px;padding-left:10px;border-left:1px solid var(--line)}
 @keyframes drop{from{transform:translate(-50%,-60%) scale(.9);opacity:0}}
 
 .idle{position:fixed;left:14px;bottom:12px;color:var(--muted);font-size:12px}
@@ -160,6 +177,7 @@ body[data-view="log"] .left{display:none}
     <h1>Host-Zugang offen</h1>
     <div id="clock" class="clock"></div>
     <div class="call">Schreibe <kbd id="kw">!join</kbd> in den Chat, um deine Persona einzuschleusen.</div>
+    <div id="prize" class="prize" hidden></div>
     <div class="count"><b id="cnt">0</b> Personas erfasst</div>
     <div id="joined" class="joined"></div>
   </section>
@@ -198,8 +216,11 @@ body[data-view="log"] .left{display:none}
       <small>Paydata extrahiert – der Gewinner ist</small>
       <strong id="wname"></strong>
       <div id="weve" class="weve" hidden></div>
+      <div id="wprize" class="wprize" hidden></div>
       <p id="wnote"></p>
     </div>
+    <div id="wlist" class="wlist" hidden></div>
+    <div id="wmore" class="wmore" hidden></div>
   </div>
 </main>
 <div id="idle" class="idle">Overlay verbunden – wartet auf das Giveaway</div>
@@ -352,20 +373,46 @@ function apply(st){
     $('clock').innerHTML=st.timer_active?`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}<small>bis zum Run</small>`:'<small>Ende per Hand</small>';
     $('clock').classList.toggle('urgent',st.timer_active&&sec<=10);
     $('joined').innerHTML=(st.recent||[]).map(n=>`<span>${esc(n)}</span>`).join('');
+    const n=st.winners_count||1;
+    let html='';
+    if(st.prize)html+=`<span>Zu gewinnen:</span>${esc(st.prize)}`;
+    if(n>1)html+=st.prize?`<em>${n} Gewinner</em>`:`${n} Gewinner`;
+    $('prize').hidden=!html;$('prize').innerHTML=html;
   }
   if(isRun){renderRun(st.run);kick();}
-  const wn=st.mode==='winner'&&st.winner;
+  const ws=(st.mode==='winner'&&st.winners)||[];
+  const wn=ws.length>0;
   $('winner').hidden=!wn;
-  if(wn){$('wname').textContent='@'+st.winner;
-    const ev=st.winner_eve;
-    $('weve').hidden=!ev;
-    if(ev){const tick=[ev.corp?`[${ev.corp}]`:'',ev.alliance?`<${ev.alliance}>`:''].filter(Boolean).join(' ');
-      $('weve').innerHTML=`${esc(ev.name)}${tick?`<span>${esc(tick)}</span>`:''}`;}
-    const pic=ev&&ev.portrait;
-    if(pic&&$('wimg').getAttribute('src')!==pic){$('wimg').src=pic;}
-    $('wpic').hidden=!pic;$('winner').classList.toggle('has-pic',!!pic);
-    $('wnote').textContent=st.run&&st.run.converged?'GOD-Konvergenz – aber die Datei war schon raus.':`${st.count} Personas im Register · Overwatch ${st.run?st.run.os:0}/40`;
-    if(lastWinner!==st.winner){lastWinner=st.winner;$('winner').classList.remove('show');void $('winner').offsetWidth;$('winner').classList.add('show');}
+  if(wn){
+    const multi=ws.length>1;
+    $('winner').classList.toggle('multi',multi);
+    $('winner').querySelector('small').textContent=multi?`Paydata extrahiert – ${ws.length} Gewinner`:'Paydata extrahiert – der Gewinner ist';
+    const tick=ev=>[ev.corp?`[${ev.corp}]`:'',ev.alliance?`<${ev.alliance}>`:''].filter(Boolean).join(' ');
+    const prizeHtml=p=>p?`${p.icon?`<img src="${esc(p.icon)}" alt="" onerror="this.remove()">`:''}${esc(p.label)}`:'';
+    $('wlist').hidden=!multi;$('wmore').hidden=true;
+    $('wname').hidden=multi;$('weve').hidden=true;$('wprize').hidden=true;$('wnote').hidden=multi;
+    if(multi){
+      $('wpic').hidden=true;$('winner').classList.remove('has-pic');
+      const max=12;
+      $('wlist').innerHTML=ws.slice(0,max).map((w,i)=>{
+        const ev=w.eve;const pic=ev&&ev.portrait;
+        return `<div class="wcard">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.outerHTML='<div class=&quot;ph none&quot;>${i+1}</div>'">`:`<div class="ph none">${i+1}</div>`}
+          <b>@${esc(w.login)}</b>${ev?`<span class="ev">${esc(ev.name)} ${esc(tick(ev))}</span>`:''}
+          ${w.prize?`<span class="pz">${prizeHtml(w.prize)}</span>`:`<span class="no">Gewinner ${i+1}</span>`}</div>`;}).join('');
+      if(ws.length>max){$('wmore').hidden=false;$('wmore').textContent=`… und ${ws.length-max} weitere – Liste im Chat`;}
+    }else{
+      const w=ws[0],ev=w.eve;
+      $('wname').textContent='@'+w.login;
+      $('weve').hidden=!ev;
+      if(ev){const t=tick(ev);$('weve').innerHTML=`${esc(ev.name)}${t?`<span>${esc(t)}</span>`:''}`;}
+      $('wprize').hidden=!w.prize;$('wprize').innerHTML=prizeHtml(w.prize);
+      const pic=ev&&ev.portrait;
+      if(pic&&$('wimg').getAttribute('src')!==pic){$('wimg').src=pic;}
+      $('wpic').hidden=!pic;$('winner').classList.toggle('has-pic',!!pic);
+      $('wnote').textContent=st.run&&st.run.converged?'GOD-Konvergenz – aber die Datei war schon raus.':`${st.count} Personas im Register · Overwatch ${st.run?st.run.os:0}/40`;
+    }
+    const key=ws.map(w=>w.login).join(',');
+    if(lastWinner!==key){lastWinner=key;$('winner').classList.remove('show');void $('winner').offsetWidth;$('winner').classList.add('show');}
   }else lastWinner='';
 }
 
@@ -384,18 +431,18 @@ function connect(){
 async function runDemo(){
   $('demo').hidden=false;
   for(;;){
-    let data;try{data=await (await fetch('/api/demo')).json();}catch(e){await new Promise(r=>setTimeout(r,2000));continue;}
+    let data;try{data=await (await fetch('/api/demo'+location.search)).json();}catch(e){await new Promise(r=>setTimeout(r,2000));continue;}
     const names=data.participants;
     // Teilnahmephase: 6 Sekunden mit eintreffenden Personas
     for(let i=0;i<=12;i++){const shown=names.slice(0,Math.min(names.length,Math.floor(i*names.length/12)));
-      apply({visible:true,mode:'open',keyword:'!hack',count:shown.length,recent:shown.slice().reverse().slice(0,10),timer_active:true,timer_remaining:6-i*.5});
+      apply({visible:true,mode:'open',keyword:'!hack',count:shown.length,recent:shown.slice().reverse().slice(0,10),timer_active:true,timer_remaining:6-i*.5,prize:data.prize,winners_count:data.winners.length});
       await new Promise(r=>setTimeout(r,500));}
     const t0=performance.now();let idx=0;
     while(idx<data.frames.length){
       const el=(performance.now()-t0)/1000;
       while(idx<data.frames.length&&data.frames[idx].t<=el){
         const f=data.frames[idx];idx++;
-        apply({visible:true,mode:f.view.done?'winner':'run',run:f.view,winner:f.view.winner,count:names.length});
+        apply({visible:true,mode:f.view.done?'winner':'run',run:f.view,winners:f.view.done?data.winners:[],count:names.length});
       }
       await new Promise(r=>setTimeout(r,50));
     }
