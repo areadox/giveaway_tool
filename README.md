@@ -4,7 +4,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.5**
+Aktuelle Version: **0.0.6**
 
 ## Funktionen
 
@@ -71,7 +71,7 @@ Das Feld **RUN (s)** legt fest, wie lange der Run im Overlay dauert (mindestens 
 Für den Zugriff auf deine Assets braucht das Tool eine eigene, kostenlose EVE-App (einmalig):
 
 1. Auf [developers.eveonline.com](https://developers.eveonline.com/applications) mit deinem EVE-Account anmelden und eine neue Anwendung anlegen.
-2. Verbindungstyp **Authentication & API Access** wählen und die Scopes `esi-assets.read_assets.v1` und `esi-universe.read_structures.v1` hinzufügen.
+2. Verbindungstyp **Authentication & API Access** wählen und den Scope `esi-assets.read_assets.v1` hinzufügen. Optional zusätzlich `esi-universe.read_structures.v1`, wenn Items in Citadels/Strukturen mit deren Namen angezeigt werden sollen – dann im Tool den Haken „Strukturnamen (Citadels) anzeigen“ setzen. Ohne diesen Scope erscheinen Strukturen als „Struktur <ID>“.
 3. Als Callback-URL `http://localhost:8766/eve/callback` eintragen (läuft das Overlay auf einem anderen Port, steht die passende Adresse unter *Einstellungen → Preise*).
 4. Die **Client-ID** der App unter *Einstellungen → Preise* eintragen und „Übernehmen“ klicken. Ein Secret ist nicht nötig (Anmeldung per PKCE).
 5. „Mit EVE verbinden“ klicken, im Browser den Charakter wählen und bestätigen. Danach lädt das Tool die Assets; später reicht „Assets laden“.
@@ -103,6 +103,7 @@ Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). 
 | `prize_text` | Was es zu gewinnen gibt (Freitext; leer = Kurzfassung der Preisliste) |
 | `prizes` | Preisliste (wird im Programm gepflegt) |
 | `eve_sso_client_id` | Client-ID der eigenen EVE-App für den Asset-Abruf |
+| `eve_sso_structures` | zusätzlich den Scope für Strukturnamen anfragen (Standard: `false`) |
 | `eve_sso_refresh_token`, `eve_sso_character_id`, `eve_sso_character_name` | EVE-Anmeldung (wird vom Programm gesetzt) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`, `{prize}`). Fehlt `{prize}`, wird der Preis automatisch angehängt; bei mehreren Gewinnern geht je Gewinner eine Nachricht raus (ab 11 Gewinnern eine Sammelliste). |
 | `sound` | Soundeffekte im Programm |
@@ -141,6 +142,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.6 | EVE-Anmeldung fragt standardmäßig nur noch den Asset-Scope an; Strukturnamen optional per Haken; verständliche Meldung bei fehlendem Scope |
 | 0.0.5 | Mehrere Gewinner; Preisbeschreibung und Preisliste (Overlay, Timer, Dock, Chat, Verlauf); EVE-Anmeldung und Auswahl von Preisen aus den eigenen Assets |
 | 0.0.4 | Bedien-Dock für OBS unter `/dock` (Steuerung, Status, Auto-Giveaway-Schalter, Protokoll); nur lokal erreichbar |
 | 0.0.3 | Auto-Giveaway mit einstellbarer Pause (in den Einstellungen ein- und ausschaltbar) und eigene Timer-Anzeige für OBS unter `/timer` |

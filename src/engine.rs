@@ -1570,7 +1570,11 @@ impl Engine {
                 "Der Webserver läuft nicht – ohne ihn kommt die Anmeldung nicht zurück.".into(),
             );
         }
-        let (url, pending) = sso::begin(&self.cfg.eve_sso_client_id, self.callback_port());
+        let (url, pending) = sso::begin(
+            &self.cfg.eve_sso_client_id,
+            self.callback_port(),
+            self.cfg.eve_sso_structures,
+        );
         self.sso_pending = Some(pending);
         self.assets_status = "Warte auf die Anmeldung im Browser …".into();
         self.assets_version += 1;
@@ -1600,6 +1604,17 @@ impl Engine {
         std::thread::spawn(move || {
             let _ = tx.send(Inbound::SsoLogin(sso::exchange(&client, &code, &pending)));
         });
+    }
+
+    /// Strukturnamen-Scope an/aus (gilt ab der nächsten Anmeldung).
+    pub fn set_sso_structures(&mut self, on: bool) {
+        if on == self.cfg.eve_sso_structures {
+            return;
+        }
+        self.cfg.eve_sso_structures = on;
+        if let Err(e) = config::save(&config::config_path(), &self.cfg) {
+            self.log(format!("Einstellung nicht gespeichert: {e}"), Tone::Red);
+        }
     }
 
     pub fn set_sso_client_id(&mut self, id: &str) {

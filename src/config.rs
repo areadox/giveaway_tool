@@ -49,6 +49,8 @@ pub struct Config {
     pub eve_sso_refresh_token: String,
     pub eve_sso_character_id: Option<i64>,
     pub eve_sso_character_name: String,
+    /// Zusätzlich den Scope für Strukturnamen anfragen (muss in der EVE-App eingetragen sein).
+    pub eve_sso_structures: bool,
     /// Unbekannte Schlüssel bleiben beim Speichern erhalten.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -85,6 +87,7 @@ impl Default for Config {
             eve_sso_refresh_token: String::new(),
             eve_sso_character_id: None,
             eve_sso_character_name: String::new(),
+            eve_sso_structures: false,
             decker_name: String::new(),
             extra: Map::new(),
         }

@@ -1214,11 +1214,23 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
             ui.ctx().copy_text(callback.clone());
         }
     });
-    ui.label(
-        RichText::new(format!("Scopes der App: {}", crate::sso::SCOPES))
-            .color(DIM)
-            .size(11.0),
-    );
+    let mut structures = engine.lock().expect("engine").cfg.eve_sso_structures;
+    ui.horizontal(|ui| {
+        if ui
+            .checkbox(&mut structures, "Strukturnamen (Citadels) anzeigen")
+            .on_hover_text(
+                "Fragt zusätzlich den Scope esi-universe.read_structures.v1 an. Der muss dann auch in deiner EVE-App eingetragen sein; gilt ab der nächsten Anmeldung.",
+            )
+            .changed()
+        {
+            engine.lock().expect("engine").set_sso_structures(structures);
+        }
+        ui.label(
+            RichText::new(format!("Scopes in der App: {}", crate::sso::scopes(structures)))
+                .color(DIM)
+                .size(11.0),
+        );
+    });
     ui.horizontal(|ui| {
         if connected {
             ui.label(RichText::new(format!("Verbunden als {character}")).color(GREEN));

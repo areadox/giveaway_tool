@@ -2,8 +2,9 @@
 //! eigenen Assets über ESI, damit Items als Giveaway-Preise markiert werden können.
 //!
 //! Benötigt eine eigene App auf <https://developers.eveonline.com> mit der
-//! Callback-URL `http://localhost:<Port>/eve/callback` und den Scopes
-//! `esi-assets.read_assets.v1` und `esi-universe.read_structures.v1`.
+//! Callback-URL `http://localhost:<Port>/eve/callback` und dem Scope
+//! `esi-assets.read_assets.v1`. Optional `esi-universe.read_structures.v1`
+//! für die Namen von Citadels/Strukturen.
 
 use crate::esi::percent_encode;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -15,7 +16,18 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-pub const SCOPES: &str = "esi-assets.read_assets.v1 esi-universe.read_structures.v1";
+pub const ASSET_SCOPE: &str = "esi-assets.read_assets.v1";
+pub const STRUCTURE_SCOPE: &str = "esi-universe.read_structures.v1";
+
+/// Angefragte Scopes: immer Assets, Strukturnamen nur wenn gewünscht
+/// (der Scope muss dann auch in der EVE-App eingetragen sein).
+pub fn scopes(structures: bool) -> String {
+    if structures {
+        format!("{ASSET_SCOPE} {STRUCTURE_SCOPE}")
+    } else {
+        ASSET_SCOPE.to_string()
+    }
+}
 const AUTHORIZE: &str = "https://login.eveonline.com/v2/oauth/authorize/";
 const TOKEN: &str = "https://login.eveonline.com/v2/oauth/token";
 const ESI: &str = "https://esi.evetech.net/latest";
@@ -35,6 +47,14 @@ pub struct Login {
     pub access_token: String,
     pub character_id: i64,
     pub character_name: String,
+    /// Tatsächlich erteilte Scopes (aus dem Token)
+    pub scopes: Vec<String>,
+}
+
+impl Login {
+    pub fn has_scope(&self, scope: &str) -> bool {
+        self.scopes.iter().any(|s| s == scope)
+    }
 }
 
 /// Ein Asset in lesbarer Form.
@@ -63,7 +83,7 @@ pub fn challenge(verifier: &str) -> String {
 }
 
 /// Erzeugt die Login-URL für den Browser.
-pub fn begin(client_id: &str, port: u16) -> (String, Pending) {
+pub fn begin(client_id: &str, port: u16, structures: bool) -> (String, Pending) {
     let pending = Pending {
         state: random_b64(16),
         verifier: random_b64(32),
@@ -73,7 +93,7 @@ pub fn begin(client_id: &str, port: u16) -> (String, Pending) {
         "{AUTHORIZE}?response_type=code&redirect_uri={}&client_id={}&scope={}&code_challenge={}&code_challenge_method=S256&state={}",
         percent_encode(&pending.redirect),
         percent_encode(client_id.trim()),
-        percent_encode(SCOPES),
+        percent_encode(&scopes(structures)),
         challenge(&pending.verifier),
         pending.state
     );
@@ -127,6 +147,28 @@ pub fn character_from_jwt(token: &str) -> Result<(i64, String), String> {
     Ok((id, name))
 }
 
+/// Liest die erteilten Scopes („scp“: Text oder Liste) aus dem Access-Token.
+pub fn scopes_from_jwt(token: &str) -> Vec<String> {
+    let Some(payload) = token.split('.').nth(1) else {
+        return vec![];
+    };
+    let Ok(bytes) = URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')) else {
+        return vec![];
+    };
+    let Ok(v) = serde_json::from_slice::<Value>(&bytes) else {
+        return vec![];
+    };
+    match v.get("scp") {
+        Some(Value::String(s)) => s.split_whitespace().map(str::to_string).collect(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect(),
+        _ => vec![],
+    }
+}
+
 fn token_request(form: &[(&str, &str)]) -> Result<Login, String> {
     let v: Value = agent()
         .post(TOKEN)
@@ -146,11 +188,13 @@ fn token_request(form: &[(&str, &str)]) -> Result<Login, String> {
         .ok_or("Kein Refresh-Token erhalten")?
         .to_string();
     let (character_id, character_name) = character_from_jwt(&access)?;
+    let scopes = scopes_from_jwt(&access);
     Ok(Login {
         refresh_token: refresh,
         access_token: access,
         character_id,
         character_name,
+        scopes,
     })
 }
 
@@ -272,7 +316,12 @@ fn resolve(a: &ureq::Agent, login: &Login, raw: Vec<RawAsset>) -> Vec<AssetRow> 
             }
         }
     }
+    let can_read_structures = login.has_scope(STRUCTURE_SCOPE);
     for sid in structures {
+        if !can_read_structures {
+            names.insert(sid, format!("Struktur {sid}"));
+            continue;
+        }
         let n = esi_get(
             a,
             &format!("/universe/structures/{sid}/"),
@@ -379,12 +428,14 @@ mod tests {
             challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
         );
-        let (url, p) = begin("abc123", 8766);
+        let (url, p) = begin("abc123", 8766, false);
         assert!(
             url.starts_with("https://login.eveonline.com/v2/oauth/authorize/?response_type=code")
         );
         assert!(url.contains("redirect_uri=http%3A%2F%2Flocalhost%3A8766%2Feve%2Fcallback"));
-        assert!(url.contains("scope=esi-assets.read_assets.v1%20esi-universe.read_structures.v1"));
+        assert!(url.contains("scope=esi-assets.read_assets.v1&"));
+        let (url2, _) = begin("abc123", 8766, true);
+        assert!(url2.contains("scope=esi-assets.read_assets.v1%20esi-universe.read_structures.v1&"));
         assert!(url.contains(&format!("state={}", p.state)));
         assert!(url.contains(&challenge(&p.verifier)));
         assert!(p.verifier.len() >= 43);
@@ -400,6 +451,15 @@ mod tests {
             (2112625428, "daulin".into())
         );
         assert!(character_from_jwt("kaputt").is_err());
+        let p2 = URL_SAFE_NO_PAD
+            .encode(r#"{"sub":"CHARACTER:EVE:1","scp":"esi-assets.read_assets.v1"}"#);
+        assert_eq!(
+            scopes_from_jwt(&format!("a.{p2}.b")),
+            vec!["esi-assets.read_assets.v1".to_string()]
+        );
+        let p3 = URL_SAFE_NO_PAD
+            .encode(r#"{"scp":["esi-assets.read_assets.v1","esi-universe.read_structures.v1"]}"#);
+        assert_eq!(scopes_from_jwt(&format!("a.{p3}.b")).len(), 2);
     }
 
     #[test]

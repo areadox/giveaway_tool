@@ -338,6 +338,19 @@ async fn eve_callback(
         return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
     }
     if let Some(err) = q.error {
+        if err == "invalid_scope" {
+            let _ = st.cmd.send(Inbound::Log(
+                "EVE-Anmeldung: Scope fehlt in der EVE-App (siehe Browserfenster).".into(),
+                crate::engine::Tone::Red,
+            ));
+            return callback_page(
+                "Scope fehlt in deiner EVE-App",
+                "Das Tool hat einen Scope angefragt, der in deiner App auf developers.eveonline.com nicht eingetragen ist. \
+                 Entweder dort <b>esi-universe.read_structures.v1</b> ergänzen oder im Tool unter \
+                 Einstellungen → Preise den Haken „Strukturnamen“ entfernen. Danach erneut „Mit EVE verbinden“.",
+            )
+            .into_response();
+        }
         let detail = q.error_description.unwrap_or(err);
         return callback_page(
             "Anmeldung abgebrochen",
