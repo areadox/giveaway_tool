@@ -2,6 +2,7 @@
   "name": "Palia-Stil – Schatzsuche im Dorf",
   "description": "Schatzsuche im Dorf: Hinweise auf der Karte sammeln, graben (heiß oder kalt), Schatzkiste heben, Lose ziehen.",
   "game": "treasure",
+  "ign_game": "palia",
   "font_url": "https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;600;700;800&display=swap",
   "shape": "circle",
   "ui": {

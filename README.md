@@ -43,7 +43,10 @@ Aktuelle Version: **0.0.9** (Releases: siehe [GitHub](https://github.com/areadox
   - Import über eve2twitch-API und Eve2Twitch-Bot-Nachrichten
   - Gewinnt ein registrierter Spieler, zeigt das Overlay sein EVE-Porträt mit Charaktername sowie Corp- und Allianz-Ticker; das Programmfenster zeigt das Porträt beim Gewinner und in der Datenbank
   - Fehlende Charakter-IDs (z. B. aus dem Eve2Twitch-Chat) werden automatisch über ESI ergänzt, für ältere Einträge per Knopf „Fehlende IDs ergänzen“
-  - Optional lassen sich EVE-Namen und Porträts im Overlay verbergen (`hide_eve_names`), dann erscheint `[EVE-NAME]`
+  - Optional lassen sich EVE-Namen und Porträts im Overlay verbergen (`hide_eve_names`), dann erscheint `[EVE-NAME]` (gilt auch für die Spielnamen anderer Spiele)
+- **Spielnamen für andere Spiele:** Zuschauer hinterlegen zusätzlich zu EVE ihren Namen für weitere Spiele, z. B. `!wow Thrall-Blackrock` oder `!palia Name`. Welcher Name beim Gewinner erscheint (Overlay, Programm, Dock), legt das Design fest: EVE und Shadowrun zeigen den EVE-Charakter, der WoW-Stil den WoW-Charakter, der Palia-Stil den Palia-Namen. Hat ein Zuschauer keinen passenden Namen, erscheint nur sein Twitch-Name. Weitere Spiele lassen sich unter *Einstellungen → Chat & Spiele* (oder im Dock) mit einer Zeile `kennung !befehl Bezeichnung` ergänzen; eigene Designs wählen das Spiel mit `"ign_game"` in der `theme.json`. Alle Spielnamen stehen unter *Einstellungen → Spielnamen* und lassen sich dort löschen.
+- **WoW mit Charakterbild:** Mit einem kostenlosen Blizzard-API-Zugang prüft `!wow Name-Realm` den Charakter und zeigt Bild, Stufe, Klasse und Gilde. Einrichtung: auf [develop.battle.net](https://develop.battle.net) anmelden → *API Access* → Client anlegen (Redirect-URL beliebig, z. B. `http://localhost`) → Client-ID und Secret unter *Einstellungen → Chat & Spiele* eintragen, Region wählen und optional einen Standard-Realm. Ohne Zugang wird der Name ungeprüft gespeichert. Das Secret erscheint nie im Dock.
+- **Updates:** Beim Start sucht das Programm auf GitHub nach einer neueren Version (abschaltbar). Ist eine da, erscheint oben im Programmfenster und im Dock „Jetzt aktualisieren“: Das Programm lädt die neue Version, tauscht sich selbst aus und startet neu. Einstellungen, Datenbank und eigene Designs bleiben erhalten. Während eines laufenden Giveaways wird nicht aktualisiert. Prüfen von Hand: *Einstellungen → Updates → Jetzt prüfen*.
 - **Datenbank:** Zuordnungen anlegen, bearbeiten, löschen und als CSV exportieren; Verlauf aller Gewinner mit Preis.
 
 ## Installation
@@ -128,6 +131,9 @@ Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). 
 | `start_in_tray` | beim Start nur im Tray (Linux: minimiert) (Standard: `true`) |
 | `close_to_tray` | Fenster-X schließt in den Tray, Windows (Standard: `true`) |
 | `overlay_show_open` | große Teilnahme-Anzeige im Overlay zeigen (Standard: `true`) |
+| `games` | weitere Spiele mit Spielnamen-Befehl (`game`, `command`, `label`; Standard: `wow`/`!wow`, `palia`/`!palia`) |
+| `wow_client_id`, `wow_client_secret`, `wow_region`, `wow_realm` | Blizzard-API für WoW-Charaktere (Region `eu`, `us`, `kr`, `tw`) |
+| `update_check` | beim Start nach neuer Version suchen (Standard: `true`) |
 | `theme` | Design von Overlay und Timer: `shadowrun`, `eve`, `wow`, `palia`, `anime` oder der Ordnername eines eigenen Designs (Standard: `shadowrun`) |
 | `eve_sso_refresh_token`, `eve_sso_character_id`, `eve_sso_character_name` | EVE-Anmeldung (wird vom Programm gesetzt) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`, `{prize}`). Fehlt `{prize}`, wird der Preis automatisch angehängt; bei mehreren Gewinnern geht je Gewinner eine Nachricht raus (ab 11 Gewinnern eine Sammelliste). |
@@ -182,6 +188,8 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 | `src/sso.rs` | EVE-Anmeldung (SSO/PKCE) und Asset-Abruf |
 | `src/prize.rs` | Preise und Zuordnung zu den Gewinnern |
 | `src/tray.rs` | Programm-Icon und Tray-Symbol (Windows) |
+| `src/wow.rs` | Blizzard-API: WoW-Charaktere mit Bild |
+| `src/update.rs` | Update über GitHub-Releases |
 | `src/db.rs`, `src/config.rs`, `src/sound.rs` | Datenbank, Konfiguration, Soundeffekte |
 
 *Shadowrun* ist eine Marke der Topps Company, Inc. Dieses Tool ist ein inoffizielles Fanprojekt und nutzt nur allgemeine Spielbegriffe; Hosts, Decks und Texte sind frei erfunden. Das gilt auch für die Designs im Stil von *EVE Online* (CCP Games), *World of Warcraft* (Blizzard Entertainment) und *Palia* (Singularity 6): Es sind inoffizielle Fan-Designs ohne Logos oder Grafiken der Spiele.
@@ -190,6 +198,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.13 | Spielnamen für andere Spiele (`!wow`, `!palia`, eigene Befehle) – das Design bestimmt, welcher Name beim Gewinner erscheint, EVE bleibt unverändert; WoW-Charaktere mit Bild, Stufe, Klasse und Gilde über die Blizzard-API; Update-Funktion: neue Version prüfen, herunterladen, austauschen und neu starten |
 | 0.0.12 | Mehr Animation in den Spiel-Abläufen: Partikel, bewegte Hintergründe (Sterne, Wolken, Fackeln, Blütenblätter), fließende Übergänge; EVE mit Virus-Orb, Treffern, Blitzen und Loot-Spew, Palia mit laufender Figur, Grab-Animation und aufspringender Kiste, WoW mit sprechendem Wächter, drehenden Runenrädern, Flammen und Tor, Anime mit Angriffen, Projektilen, Strahl und K.O.; Overlay ohne `color-mix()` (ältere OBS-Versionen) |
 | 0.0.11 | Jedes Design hat jetzt einen eigenen, zum Spiel passenden Ablauf: EVE – Data-Site hacken wie im Spiel, WoW-Stil – Rätsel, Runenschloss, Feuerschalen und Lootwurf, Palia-Stil – Schatzsuche mit Karte und Graben, Anime – Bosskampf; eigene Designs wählen den Ablauf mit `game` |
 | 0.0.10 | Designs für verschiedene Spiele (Shadowrun, EVE Online, WoW-Stil, Palia-Stil, Anime) mit eigenem Look und eigenen Begriffen für Overlay und Timer-Anzeige; Auswahl im Programm und im Dock, Vorschau; eigene Designs per Ordner `themes/` mit Vorlage |

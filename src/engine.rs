@@ -14,6 +14,7 @@ use crate::sound::{self, Sfx};
 use crate::sso::{self, AssetRow};
 use crate::themes;
 use crate::twitch::{TwitchReader, TwitchSender};
+use crate::{update, wow};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -69,6 +70,18 @@ pub enum Inbound {
         info: Option<esi::EveInfo>,
         error: Option<String>,
     },
+    /// Spielname (WoW, Palia, …) gespeichert oder abgelehnt; `reply` geht in den Chat.
+    GameDone {
+        ok: bool,
+        reply: String,
+        log: String,
+    },
+    /// Ergebnis der Update-Prüfung (`manual` = per Knopf ausgelöst)
+    UpdateChecked {
+        result: Result<Option<update::Release>, String>,
+        manual: bool,
+    },
+    UpdateInstalled(Result<std::path::PathBuf, String>),
 }
 
 /// Antwort auf einen Dock-Befehl: optionale Daten oder Fehlermeldung.
@@ -104,6 +117,13 @@ pub struct SettingsPatch {
     pub close_to_tray: Option<bool>,
     pub overlay_show_open: Option<bool>,
     pub theme: Option<String>,
+    pub wow_client_id: Option<String>,
+    pub wow_client_secret: Option<String>,
+    pub wow_region: Option<String>,
+    pub wow_realm: Option<String>,
+    pub update_check: Option<bool>,
+    /// Spiele als Text („wow !wow WoW-Charakter“ je Zeile)
+    pub games_text: Option<String>,
 }
 
 impl SettingsPatch {
@@ -133,8 +153,22 @@ impl SettingsPatch {
             start_in_tray,
             close_to_tray,
             overlay_show_open,
-            theme
+            theme,
+            wow_client_id,
+            wow_region,
+            wow_realm,
+            update_check
         );
+        if let Some(k) = self
+            .wow_client_secret
+            .as_ref()
+            .filter(|k| !k.trim().is_empty())
+        {
+            c.wow_client_secret = k.trim().to_string();
+        }
+        if let Some(t) = &self.games_text {
+            c.games = config::parse_games(t)?;
+        }
         if let Some(t) = self.oauth_token.as_ref().filter(|t| !t.trim().is_empty()) {
             c.oauth_token = t.trim().to_string();
         }
@@ -216,6 +250,15 @@ pub enum DockCmd {
     },
     /// Eigene Designs aus dem Ordner `themes/` neu einlesen
     ReloadThemes,
+    /// Auf GitHub nach einer neuen Version suchen
+    UpdateCheck,
+    /// Neue Version herunterladen, einsetzen und neu starten
+    UpdateInstall,
+    /// Spielname löschen
+    GameNameDelete {
+        login: String,
+        game: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -289,6 +332,37 @@ struct ActiveRun {
     winners: Vec<String>,
 }
 
+/// Spielname aus einem anderen Spiel als EVE (gleiche Felder wie `EveCard`,
+/// damit Overlay und Dock beide gleich anzeigen können).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct IgnCard {
+    pub game: String,
+    pub label: String,
+    pub name: String,
+    /// Zusatzzeile, z. B. „Stufe 80 Magier · <Gilde>“
+    pub sub: Option<String>,
+    pub portrait: Option<String>,
+}
+
+impl IgnCard {
+    fn from_db(g: &crate::db::GameName, label: &str) -> Self {
+        let info = g.info.as_ref();
+        let s = |k: &str| {
+            info.and_then(|i| i.get(k))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .filter(|x| !x.is_empty())
+        };
+        Self {
+            game: g.game.clone(),
+            label: label.to_string(),
+            name: g.name.clone(),
+            sub: s("summary"),
+            portrait: s("image"),
+        }
+    }
+}
+
 /// Ein Gewinner mit Anzeigenamen, EVE-Daten und zugeordnetem Preis.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Winner {
@@ -297,6 +371,8 @@ pub struct Winner {
     #[serde(skip)]
     pub display: String,
     pub eve: Option<EveCard>,
+    /// Spielname passend zum Design (wenn nicht EVE)
+    pub ign: Option<IgnCard>,
     pub prize: Option<PrizeView>,
 }
 
@@ -380,6 +456,12 @@ pub struct Engine {
     dirty: bool,
     last_publish: Instant,
     repaint: Option<Box<dyn Fn() + Send>>,
+    /// Neuere Version auf GitHub (falls gefunden)
+    pub update: Option<update::Release>,
+    pub update_status: String,
+    pub update_busy: bool,
+    /// Update ist eingespielt: Programm neu starten (GUI bzw. Hauptschleife)
+    pub restart_to: Option<std::path::PathBuf>,
 }
 
 fn stamp() -> String {
@@ -437,6 +519,10 @@ impl Engine {
             dirty: true,
             last_publish: Instant::now(),
             repaint: None,
+            update: None,
+            update_status: String::new(),
+            update_busy: false,
+            restart_to: None,
         };
         e.refresh_igns();
         e.log(
@@ -452,7 +538,167 @@ impl Engine {
             Tone::Dark,
         );
         e.start_overlay();
+        if e.cfg.update_check && !cfg!(test) {
+            e.check_update(false);
+        }
         e
+    }
+
+    // ------------------------------------------------------------ Update
+
+    pub fn check_update(&mut self, manual: bool) {
+        if self.update_busy {
+            return;
+        }
+        self.update_busy = true;
+        self.update_status = "Suche nach Updates …".into();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(Inbound::UpdateChecked {
+                result: update::check(),
+                manual,
+            });
+        });
+        self.dirty = true;
+    }
+
+    pub fn install_update(&mut self) -> Result<(), String> {
+        let Some(rel) = self.update.clone() else {
+            return Err("Kein Update verfügbar".into());
+        };
+        if matches!(self.phase, Phase::Running | Phase::Open) {
+            return Err("Bitte erst das laufende Giveaway abschließen".into());
+        }
+        if self.update_busy {
+            return Err("Update läuft bereits".into());
+        }
+        self.update_busy = true;
+        self.update_status = format!("Lade v{} herunter …", rel.version);
+        self.log(
+            format!("Update auf v{} wird geladen …", rel.version),
+            Tone::Cyan,
+        );
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(Inbound::UpdateInstalled(update::install(&rel)));
+        });
+        self.dirty = true;
+        Ok(())
+    }
+
+    // ------------------------------------------------------------ Spielnamen
+
+    /// Kennung des Spiels, dessen Namen das aktive Design zeigt ("eve" = EVE-Daten).
+    pub fn ign_game(&self) -> String {
+        themes::registry()
+            .get(&self.cfg.theme)
+            .info
+            .ign_game
+            .clone()
+    }
+
+    fn game_label(&self, game: &str) -> String {
+        self.cfg
+            .games
+            .iter()
+            .find(|g| g.game == game)
+            .map(|g| g.label.clone())
+            .unwrap_or_else(|| format!("{game}-Name"))
+    }
+
+    /// Spielname des Zuschauers passend zum Design (nur für Nicht-EVE-Designs).
+    pub fn ign_card(&self, login: &str) -> Option<IgnCard> {
+        let game = self.ign_game();
+        if game == "eve" {
+            return None;
+        }
+        self.db
+            .get_game_name(login, &game)
+            .map(|g| IgnCard::from_db(&g, &self.game_label(&game)))
+    }
+
+    fn handle_game_link(&mut self, login: String, game: config::GameCmd, arg: String) {
+        let arg = esi::clean_name(&arg);
+        if arg.is_empty() {
+            let msg = match self.db.get_game_name(&login, &game.game) {
+                Some(g) => format!(
+                    "@{login} Dein {}: {} – ändern mit {} Name",
+                    game.label, g.name, game.command
+                ),
+                None if game.game == "wow" => {
+                    format!("@{login} Bitte so eintragen: {} Name-Realm", game.command)
+                }
+                None => format!("@{login} Bitte so eintragen: {} Name", game.command),
+            };
+            self.sender.send(msg);
+            return;
+        }
+        let db = self.db.clone();
+        let tx = self.tx.clone();
+        if game.game == "wow" {
+            let Some((name, realm)) = wow::parse_command(&arg, &self.cfg.wow_realm) else {
+                self.sender.send(format!(
+                    "@{login} Bitte so eintragen: {} Name-Realm",
+                    game.command
+                ));
+                return;
+            };
+            let creds = self.cfg.wow_ready().then(|| {
+                (
+                    self.cfg.wow_client_id.clone(),
+                    self.cfg.wow_client_secret.clone(),
+                    self.cfg.wow_region.clone(),
+                )
+            });
+            std::thread::spawn(move || {
+                let res = match creds {
+                    // Ohne Blizzard-Zugang: Name ungeprüft speichern
+                    None => db
+                        .set_game_name(&login, "wow", &format!("{name}-{realm}"), Some(&serde_json::json!({"realm": realm})))
+                        .map(|_| (format!("{name}-{realm}"), String::new()))
+                        .map_err(|e| e.to_string()),
+                    Some((id, secret, region)) => wow::lookup(&id, &secret, &region, &name, &realm).and_then(|c| {
+                        let sum = c.summary();
+                        let info = serde_json::json!({"realm": c.realm, "level": c.level, "class": c.class, "race": c.race,
+                            "guild": c.guild, "faction": c.faction, "image": c.image, "region": c.region, "summary": sum});
+                        let shown = format!("{}-{}", c.name, c.realm);
+                        db.set_game_name(&login, "wow", &shown, Some(&info)).map(|_| (shown, sum)).map_err(|e| e.to_string())
+                    }),
+                };
+                let msg = match res {
+                    Ok((shown, sum)) => Inbound::GameDone {
+                        reply: if sum.is_empty() {
+                            format!("@{login} {} gespeichert: {shown}", game.label)
+                        } else {
+                            format!("@{login} {} gespeichert: {shown} ({sum})", game.label)
+                        },
+                        log: format!("{}: @{login} // {shown}", game.label),
+                        ok: true,
+                    },
+                    Err(e) => Inbound::GameDone {
+                        reply: format!("@{login} {e}"),
+                        log: format!("{} für @{login} abgelehnt: {e}", game.label),
+                        ok: false,
+                    },
+                };
+                let _ = tx.send(msg);
+            });
+            return;
+        }
+        let name: String = arg.chars().filter(|c| !c.is_control()).take(40).collect();
+        let msg = match db.set_game_name(&login, &game.game, &name, None) {
+            Ok(()) => Inbound::GameDone {
+                reply: format!("@{login} {} gespeichert: {name}", game.label),
+                log: format!("{}: @{login} // {name}", game.label),
+                ok: true,
+            },
+            Err(e) => Inbound::GameDone {
+                reply: format!("@{login} {e}"),
+                log: format!("{} für @{login} abgelehnt: {e}", game.label),
+                ok: false,
+            },
+        };
+        let _ = tx.send(msg);
     }
 
     pub fn set_repaint(&mut self, f: Box<dyn Fn() + Send>) {
@@ -521,6 +767,12 @@ impl Engine {
     }
 
     pub fn display_name(&self, login: &str) -> String {
+        if let Some(c) = self.ign_card(login) {
+            return format!("{login} // {}", c.name);
+        }
+        if self.ign_game() != "eve" {
+            return login.to_string();
+        }
         match self.db.get_user(login).and_then(|u| u.eve_character_name) {
             Some(n) if !n.is_empty() => format!("{login} // {n}"),
             _ => login.to_string(),
@@ -535,6 +787,7 @@ impl Engine {
             .filter_map(|u| u.eve_character_name)
             .collect();
         set.extend(self.eve_cache.values().cloned());
+        set.extend(self.db.list_game_names().into_iter().map(|g| g.name));
         let mut v: Vec<String> = set
             .into_iter()
             .filter(|s| s.trim().chars().count() >= 3)
@@ -730,10 +983,14 @@ impl Engine {
                     self.resolve_id(login.clone(), card.name.clone());
                 }
             }
+            let ign = self.ign_card(login);
+            // Bei Designs mit eigenem Spiel (WoW, Palia, …) keine EVE-Daten zeigen
+            let eve = if self.ign_game() == "eve" { eve } else { None };
             winners.push(Winner {
                 login: login.clone(),
                 display: self.display_name(login),
                 eve,
+                ign,
                 prize: prize::for_winner(&self.cfg.prizes, &self.cfg.prize_text, i),
             });
         }
@@ -1079,6 +1336,15 @@ impl Engine {
             }
             return;
         }
+        if let Some(g) = self.cfg.games.iter().find(|g| {
+            let c = g.command.to_lowercase();
+            lower == c || lower.starts_with(&format!("{c} "))
+        }) {
+            let g = g.clone();
+            let arg: String = msg.chars().skip(g.command.chars().count()).collect();
+            self.handle_game_link(user, g, arg.trim().to_string());
+            return;
+        }
         let cmd = self.cfg.eve_command_or_default().to_lowercase();
         if lower == cmd {
             self.handle_eve_link(user, String::new());
@@ -1315,6 +1581,69 @@ impl Engine {
                         Tone::Yellow,
                     ),
                 },
+                Inbound::GameDone { ok, reply, log } => {
+                    self.log(log, if ok { Tone::Cyan } else { Tone::Yellow });
+                    self.sender.send(reply);
+                    self.refresh_igns();
+                }
+                Inbound::UpdateChecked { result, manual } => {
+                    self.update_busy = false;
+                    match result {
+                        Ok(Some(rel)) => {
+                            self.update_status = format!("Version {} verfügbar", rel.version);
+                            if rel.asset.is_none() {
+                                self.update_status
+                                    .push_str(" (für dieses System kein Download)");
+                            }
+                            self.log(
+                                format!("Update verfügbar: v{} (installiert: v{}) – Einstellungen oder Dock → Aktualisieren", rel.version, update::VERSION),
+                                Tone::Magenta,
+                            );
+                            self.update = Some(rel);
+                        }
+                        Ok(None) => {
+                            self.update = None;
+                            self.update_status = format!("Aktuell (v{})", update::VERSION);
+                            if manual {
+                                self.log(
+                                    format!(
+                                        "Keine neuere Version – v{} ist aktuell.",
+                                        update::VERSION
+                                    ),
+                                    Tone::Green,
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            self.update_status = format!("Prüfung fehlgeschlagen: {e}");
+                            if manual {
+                                self.log(
+                                    format!("Update-Prüfung fehlgeschlagen: {e}"),
+                                    Tone::Yellow,
+                                );
+                            }
+                        }
+                    }
+                    self.dirty = true;
+                }
+                Inbound::UpdateInstalled(res) => {
+                    self.update_busy = false;
+                    match res {
+                        Ok(path) => {
+                            self.update_status = "Update installiert – Neustart …".into();
+                            self.log(
+                                "Update installiert – das Programm startet neu.",
+                                Tone::Green,
+                            );
+                            self.restart_to = Some(path);
+                        }
+                        Err(e) => {
+                            self.update_status = format!("Update fehlgeschlagen: {e}");
+                            self.log(format!("Update fehlgeschlagen: {e}"), Tone::Red);
+                        }
+                    }
+                    self.dirty = true;
+                }
                 Inbound::EveDone { login, ign, error } => {
                     if let Some(i) = ign {
                         self.eve_cache.insert(login.clone(), i.clone());
@@ -1410,6 +1739,11 @@ impl Engine {
                         None
                     } else {
                         w.eve.clone()
+                    },
+                    ign: if self.cfg.hide_eve_names {
+                        None
+                    } else {
+                        w.ign.clone()
                     },
                     ..w.clone()
                 })
@@ -1516,6 +1850,14 @@ impl Engine {
             DockCmd::SsoStructures { enabled } => self.set_sso_structures(enabled),
             DockCmd::Theme { id } => self.set_theme(&id)?,
             DockCmd::ReloadThemes => self.reload_themes(),
+            DockCmd::UpdateCheck => self.check_update(true),
+            DockCmd::UpdateInstall => self.install_update()?,
+            DockCmd::GameNameDelete { login, game } => {
+                self.db
+                    .delete_game_name(&login, &game)
+                    .map_err(|e| e.to_string())?;
+                self.refresh_igns();
+            }
         }
         self.dirty = true;
         Ok(None)
@@ -1524,7 +1866,7 @@ impl Engine {
     /// Einstellungen für das Dock – ohne Tokens und Schlüssel.
     fn settings_view(&self) -> Value {
         let c = &self.cfg;
-        serde_json::json!({
+        let mut v = serde_json::json!({
             "channel": c.channel, "bot_username": c.bot_username,
             "oauth_token_set": !c.oauth_token.trim().is_empty(),
             "keyword": c.keyword, "web_port": c.web_port, "timer_duration": c.timer_duration,
@@ -1546,7 +1888,19 @@ impl Engine {
             "scopes": sso::scopes(c.eve_sso_structures),
             "assets_status": self.assets_status, "assets_loading": self.assets_loading,
             "assets_count": self.assets.len(), "assets_version": self.assets_version,
-        })
+        });
+        let extra = serde_json::json!({
+            "ign_game": self.ign_game(),
+            "games_text": c.games_text(),
+            "wow_client_id": c.wow_client_id, "wow_client_secret_set": !c.wow_client_secret.trim().is_empty(),
+            "wow_region": c.wow_region, "wow_realm": c.wow_realm,
+            "update_check": c.update_check, "version": update::VERSION,
+            "update": self.update, "update_status": self.update_status, "update_busy": self.update_busy,
+        });
+        if let (Some(m), Value::Object(x)) = (v.as_object_mut(), extra) {
+            m.extend(x);
+        }
+        v
     }
 
     /// Statusdaten für das Bedien-Dock (enthält im Gegensatz zum Overlay
@@ -1594,7 +1948,7 @@ impl Engine {
             "duration": self.cfg.timer_duration,
             "hack": self.cfg.hack_duration,
             "winners": self.winners.iter().map(|w| serde_json::json!({
-                "login": w.login, "display": w.display, "eve": w.eve, "prize": w.prize
+                "login": w.login, "display": w.display, "eve": w.eve, "ign": w.ign, "prize": w.prize
             })).collect::<Vec<_>>(),
             "winners_count": self.cfg.winners.max(1),
             "prize": self.prize_summary(),
@@ -2010,9 +2364,14 @@ pub fn spawn(engine: Arc<Mutex<Engine>>) {
     std::thread::Builder::new()
         .name("engine".into())
         .spawn(move || loop {
-            {
+            let restart = {
                 let Ok(mut e) = engine.lock() else { return };
                 e.tick();
+                e.restart_to.clone()
+            };
+            // Update eingespielt: auch im Tray ohne sichtbares Fenster neu starten
+            if let Some(exe) = restart {
+                crate::restart_after_update(&engine, &exe);
             }
             std::thread::sleep(Duration::from_millis(50));
         })
@@ -2298,6 +2657,85 @@ mod tests {
         }
         assert_eq!(e.winners.len(), 1);
         assert_eq!(e.winners[0].login, "solo");
+        e.shutdown();
+    }
+
+    #[test]
+    fn game_names_per_theme() {
+        let dir = std::env::temp_dir().join(format!("cg-ign-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_file(dir.join("g.db"));
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        db.upsert_user(&NewUser {
+            twitch_login: "ali".into(),
+            eve_character_name: Some("Ali Pilot".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        let mut e = Engine::new(
+            Config {
+                web_port: 19368,
+                sound: false,
+                theme: "palia".into(),
+                ..Default::default()
+            },
+            db,
+        );
+        let chat = |e: &mut Engine, user: &str, msg: &str| {
+            e.tx.send(Inbound::Chat {
+                user: user.into(),
+                msg: msg.into(),
+            })
+            .unwrap();
+            let t = Instant::now();
+            while t.elapsed() < Duration::from_millis(400) {
+                e.tick();
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        chat(&mut e, "ali", "!palia Ali Sternenstaub");
+        chat(&mut e, "ali", "!wow Thrall-Blackrock");
+        assert_eq!(
+            e.db.get_game_name("ali", "palia").unwrap().name,
+            "Ali Sternenstaub"
+        );
+        assert_eq!(
+            e.db.get_game_name("ali", "wow").unwrap().name,
+            "Thrall-Blackrock",
+            "ohne Blizzard-Zugang ungeprüft"
+        );
+        // Palia-Design zeigt den Palia-Namen, keine EVE-Daten
+        let c = e.ign_card("ali").unwrap();
+        assert_eq!(
+            (c.game.as_str(), c.name.as_str()),
+            ("palia", "Ali Sternenstaub")
+        );
+        assert_eq!(e.display_name("ali"), "ali // Ali Sternenstaub");
+        // EVE-Design: wie bisher
+        e.cfg.theme = "eve".into();
+        assert!(e.ign_card("ali").is_none());
+        assert_eq!(e.display_name("ali"), "ali // Ali Pilot");
+        // Design ohne Spielname des Zuschauers → nur Login
+        e.cfg.theme = "wow".into();
+        assert_eq!(e.ign_card("ali").unwrap().name, "Thrall-Blackrock");
+        e.db.delete_game_name("ali", "wow").unwrap();
+        assert_eq!(e.display_name("ali"), "ali");
+        // Gewinner bekommt die Karte
+        e.cfg.theme = "palia".into();
+        e.toggle_entries("!hack", "0");
+        chat(&mut e, "ali", "!hack");
+        e.start_breach("!hack", "8");
+        let t = Instant::now();
+        while e.phase == Phase::Running && t.elapsed() < Duration::from_secs(15) {
+            e.tick();
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(e.winners[0].ign.as_ref().unwrap().name, "Ali Sternenstaub");
+        assert!(e.winners[0].eve.is_none());
+        assert!(e.overlay_json().contains("Ali Sternenstaub"));
+        // Secret nie im Dock
+        e.cfg.wow_client_secret = "supergeheim".into();
+        assert!(!e.dock_json().contains("supergeheim"));
         e.shutdown();
     }
 

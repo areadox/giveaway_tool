@@ -35,6 +35,7 @@ enum Tab {
     Messages,
     Prizes,
     Database,
+    Games,
     History,
 }
 
@@ -105,6 +106,8 @@ struct Settings {
     db_seen: u64,
     info: Option<String>,
     show_token: bool,
+    games_text: String,
+    game_rows: Vec<crate::db::GameName>,
 }
 
 pub struct GuiApp {
@@ -229,6 +232,8 @@ impl GuiApp {
             manual_name: String::new(),
             manual_qty: 1,
             prize_info: None,
+            games_text: e.cfg.games_text(),
+            game_rows: e.db.list_game_names(),
         });
     }
 }
@@ -274,6 +279,7 @@ impl eframe::App for GuiApp {
         let mut open_settings = false;
         let mut action: Option<&'static str> = None;
         let mut new_winners: Option<u32> = None;
+        let mut do_update = false;
         {
             let e = self.engine.lock().expect("engine");
             egui::TopBottomPanel::top("header")
@@ -308,6 +314,23 @@ impl eframe::App for GuiApp {
                                 );
                             });
                         });
+                    if let Some(r) = &e.update {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(format!("▲ Neue Version v{} verfügbar", r.version)).color(YELLOW).strong());
+                            if r.asset.is_some()
+                                && ui
+                                    .add_enabled(!e.update_busy, egui::Button::new(RichText::new("JETZT AKTUALISIEREN").color(YELLOW)).stroke(Stroke::new(1.0_f32, YELLOW)))
+                                    .on_hover_text("Lädt die neue Version von GitHub, ersetzt das Programm und startet neu. Einstellungen und Datenbank bleiben erhalten.")
+                                    .clicked()
+                            {
+                                do_update = true;
+                            }
+                            if !e.update_status.is_empty() && e.update_busy {
+                                ui.label(RichText::new(&e.update_status).color(DIM).size(11.0));
+                            }
+                        });
+                    }
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("KEYWORD").color(CYAN));
@@ -380,6 +403,9 @@ impl eframe::App for GuiApp {
                         ui.horizontal(|ui| {
                             if let Some(id) = w.eve.as_ref().and_then(|c| c.id) {
                                 portrait(ui, id, if many { 40.0 } else { 64.0 });
+                            } else if let Some(url) = w.ign.as_ref().and_then(|c| c.portrait.clone()) {
+                                let px = if many { 40.0 } else { 64.0 };
+                                ui.add(egui::Image::new(url).fit_to_exact_size(egui::vec2(px, px)).corner_radius(2.0).show_loading_spinner(false));
                             }
                             ui.vertical(|ui| {
                                 let head = if many {
@@ -404,6 +430,10 @@ impl eframe::App for GuiApp {
                                     .collect::<Vec<_>>()
                                     .join(" ");
                                     info.push(format!("EVE: {} {tick}", c.name).trim().to_string());
+                                }
+                                if let Some(c) = &w.ign {
+                                    let sub = c.sub.as_ref().map(|s| format!(" ({s})")).unwrap_or_default();
+                                    info.push(format!("{}: {}{sub}", c.label, c.name));
                                 }
                                 if let Some(p) = &w.prize {
                                     info.push(format!("Preis: {}", p.label));
@@ -507,6 +537,12 @@ impl eframe::App for GuiApp {
 
         if let Some(n) = new_winners {
             self.engine.lock().expect("engine").set_winners(n);
+        }
+        if do_update {
+            let mut e = self.engine.lock().expect("engine");
+            if let Err(err) = e.install_update() {
+                e.log(format!("Update nicht möglich: {err}"), Tone::Yellow);
+            }
         }
         match action {
             Some("toggle") => self
@@ -613,9 +649,10 @@ impl GuiApp {
                         ui.horizontal(|ui| {
                             for (t, label) in [
                                 (Tab::General, "Einstellungen"),
-                                (Tab::Messages, "Chat & EVE"),
+                                (Tab::Messages, "Chat & Spiele"),
                                 (Tab::Prizes, "Preise"),
                                 (Tab::Database, "Datenbank"),
+                                (Tab::Games, "Spielnamen"),
                                 (Tab::History, "Verlauf"),
                             ] {
                                 if ui
@@ -665,6 +702,14 @@ impl GuiApp {
                                                     cfg.hack_duration = h.min(600.0);
                                                     if cfg.keyword.trim().is_empty() {
                                                         cfg.keyword = "!join".into();
+                                                    }
+                                                    match crate::config::parse_games(&st.games_text)
+                                                    {
+                                                        Ok(g) => cfg.games = g,
+                                                        Err(err) => {
+                                                            st.error = Some(err);
+                                                            return;
+                                                        }
                                                     }
                                                     let res = {
                                                         let mut e = engine.lock().expect("engine");
@@ -719,6 +764,7 @@ impl GuiApp {
                         Tab::Messages => messages_tab(ui, st),
                         Tab::Prizes => prizes_tab(ui, st, &engine),
                         Tab::Database => database_tab(ui, st, &engine),
+                        Tab::Games => games_tab(ui, st, &engine),
                         Tab::History => history_tab(ui, st),
                     });
                 if let Some(edit) = st.edit.as_mut() {
@@ -932,6 +978,7 @@ fn general_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>
                 .on_hover_text("„Host-Zugang offen“ mit Countdown und Teilnehmern. Aus, wenn du die kleine Timer-Anzeige (/timer) nutzt – Matrix-Run und Gewinner erscheinen weiterhin.");
             ui.end_row();
             theme_row(ui, st, engine);
+            update_row(ui, st, engine);
             let d = &mut st.draft;
             ui.label(RichText::new("Programmstart").color(CYAN));
             ui.checkbox(&mut d.start_in_tray, "nur im Tray starten (Linux: minimiert)");
@@ -1000,6 +1047,44 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
                     "",
                 );
             });
+        ui.add_space(14.0);
+        ui.label(RichText::new("SPIELNAMEN ANDERER SPIELE").color(GREEN).strong());
+        ui.label(
+            RichText::new(
+                "Je Zeile: Kennung  Befehl  Bezeichnung – z. B. „wow !wow WoW-Charakter“. Zuschauer schreiben „!palia Name“. \
+                 Welcher Name beim Gewinner erscheint, legt das Design fest (EVE, WoW-Stil → wow, Palia-Stil → palia).",
+            )
+            .color(DIM)
+            .size(11.0),
+        );
+        ui.add(egui::TextEdit::multiline(&mut st.games_text).desired_rows(3).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace));
+        ui.add_space(8.0);
+        egui::Grid::new("wow")
+            .num_columns(2)
+            .spacing([14.0, 10.0])
+            .min_col_width(220.0)
+            .show(ui, |ui| {
+                let d = &mut st.draft;
+                field(ui, "WoW: Blizzard Client-ID", &mut d.wow_client_id, false, "develop.battle.net → API Access → Client anlegen");
+                field(ui, "WoW: Blizzard Client-Secret", &mut d.wow_client_secret, true, "Wird nur hier gespeichert und nie im Dock angezeigt");
+                ui.label(RichText::new("WoW: Region").color(CYAN));
+                egui::ComboBox::from_id_salt("wowregion")
+                    .selected_text(d.wow_region.to_uppercase())
+                    .show_ui(ui, |ui| {
+                        for r in crate::wow::REGIONS {
+                            ui.selectable_value(&mut d.wow_region, r.to_string(), r.to_uppercase());
+                        }
+                    });
+                ui.end_row();
+                field(ui, "WoW: Standard-Realm", &mut d.wow_realm, false, "Wenn im Chat nur „!wow Name“ steht");
+            });
+        ui.label(
+            RichText::new(
+                "Mit Blizzard-Zugang prüft „!wow Name-Realm“ den Charakter und zeigt Bild, Klasse, Stufe und Gilde. Ohne Zugang wird der Name ungeprüft gespeichert.",
+            )
+            .color(DIM)
+            .size(11.0),
+        );
         ui.add_space(10.0);
         ui.label(
             RichText::new(
@@ -1009,6 +1094,105 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
             .size(11.0),
         );
     });
+}
+
+fn games_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
+    ui.horizontal(|ui| {
+        if ui.button("Aktualisieren").clicked() {
+            st.game_rows = engine.lock().expect("engine").db.list_game_names();
+        }
+        ui.label(
+            RichText::new(format!(
+                "{} Spielnamen (EVE-Zuordnungen stehen unter Datenbank)",
+                st.game_rows.len()
+            ))
+            .color(DIM),
+        );
+    });
+    ui.add_space(6.0);
+    let mut delete: Option<(String, String)> = None;
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        egui::Grid::new("gamenames")
+            .striped(true)
+            .num_columns(5)
+            .spacing([16.0, 6.0])
+            .show(ui, |ui| {
+                for h in ["Twitch", "Spiel", "Name", "Info", ""] {
+                    ui.label(RichText::new(h).color(CYAN).strong());
+                }
+                ui.end_row();
+                for g in &st.game_rows {
+                    ui.label(&g.twitch_login);
+                    ui.label(&g.game);
+                    ui.label(&g.name);
+                    let sum = g
+                        .info
+                        .as_ref()
+                        .and_then(|i| i.get("summary"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    ui.label(RichText::new(sum).color(DIM));
+                    if ui.small_button("Löschen").clicked() {
+                        delete = Some((g.twitch_login.clone(), g.game.clone()));
+                    }
+                    ui.end_row();
+                }
+            });
+    });
+    if let Some((login, game)) = delete {
+        let mut e = engine.lock().expect("engine");
+        let _ = e.db.delete_game_name(&login, &game);
+        e.refresh_igns();
+        st.game_rows = e.db.list_game_names();
+    }
+}
+
+/// Update-Zeile in den Einstellungen.
+fn update_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
+    ui.label(RichText::new("Updates").color(CYAN));
+    ui.vertical(|ui| {
+        ui.checkbox(
+            &mut st.draft.update_check,
+            "beim Start nach neuer Version suchen",
+        );
+        let (status, has, busy) = {
+            let e = engine.lock().expect("engine");
+            (
+                e.update_status.clone(),
+                e.update.as_ref().map(|r| r.version.clone()),
+                e.update_busy,
+            )
+        };
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("v{}", crate::update::VERSION)).color(DIM));
+            if ui
+                .add_enabled(!busy, egui::Button::new("Jetzt prüfen"))
+                .clicked()
+            {
+                engine.lock().expect("engine").check_update(true);
+            }
+            if let Some(v) = has {
+                if ui
+                    .add_enabled(
+                        !busy,
+                        egui::Button::new(
+                            RichText::new(format!("Auf v{v} aktualisieren")).color(GREEN),
+                        ),
+                    )
+                    .clicked()
+                {
+                    let r = engine.lock().expect("engine").install_update();
+                    if let Err(e) = r {
+                        st.error = Some(e);
+                    }
+                }
+            }
+        });
+        if !status.is_empty() {
+            ui.label(RichText::new(status).color(DIM).size(11.0));
+        }
+    });
+    ui.end_row();
 }
 
 fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {

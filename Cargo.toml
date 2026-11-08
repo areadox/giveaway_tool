@@ -1,6 +1,6 @@
 [package]
 name = "cyber-giveaway"
-version = "0.0.12"
+version = "0.0.13"
 edition = "2021"
 description = "Twitch-Giveaway-Tool mit OBS-Overlay und simuliertem Matrix-Run im Shadowrun-Stil"
 license = "LicenseRef-Proprietary"

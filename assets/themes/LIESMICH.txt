@@ -15,6 +15,8 @@ So geht's:
 theme.json
 -----------
   "name"        Anzeigename in der Auswahl
+  "ign_game"    welcher Spielname beim Gewinner erscheint: "eve" (Standard)
+                oder eine Kennung aus Einstellungen → Chat & Spiele (z. B. "wow")
   "game"        Ablauf des Giveaways (was im Overlay passiert):
                   dice      Matrix-Run mit Würfeln (Shadowrun, Standard)
                   datasite  Data-Site hacken wie in EVE Online

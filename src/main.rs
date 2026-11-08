@@ -17,6 +17,8 @@ mod sso;
 mod themes;
 mod tray;
 mod twitch;
+mod update;
+mod wow;
 
 use std::sync::{Arc, Mutex};
 
@@ -30,7 +32,21 @@ fn fatal(msg: &str) -> ! {
     std::process::exit(1);
 }
 
+/// Nach einem eingespielten Update: alles sauber beenden und neu starten.
+pub fn restart_after_update(engine: &Arc<Mutex<engine::Engine>>, exe: &std::path::Path) -> ! {
+    if let Ok(mut e) = engine.lock() {
+        e.shutdown();
+    }
+    // Webserver-Port freigeben, bevor die neue Version ihn belegt
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    if let Err(err) = update::spawn(exe) {
+        fatal(&format!("{err}\nBitte das Programm von Hand neu starten."));
+    }
+    std::process::exit(0);
+}
+
 fn main() {
+    update::cleanup();
     let cfg_path = config::config_path();
     let cfg = config::load(&cfg_path);
     if !cfg_path.exists() {

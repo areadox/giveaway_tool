@@ -1183,6 +1183,8 @@ function apply(st){
     $('winner').classList.toggle('multi',multi);
     $('winner').querySelector('small').textContent=multi?U('winner_many',{n:ws.length}):U('winner_one');
     const tick=ev=>[ev.corp?`[${ev.corp}]`:'',ev.alliance?`<${ev.alliance}>`:''].filter(Boolean).join(' ');
+    // Spielname: EVE (mit Corp/Allianz) oder der Name des Spiels zum Design (z. B. WoW mit Klasse/Gilde)
+    const card=w=>w.eve?{name:w.eve.name,tick:tick(w.eve),pic:w.eve.portrait}:w.ign?{name:w.ign.name,tick:w.ign.sub||'',pic:w.ign.portrait}:null;
     const prizeHtml=p=>p?`${p.icon?`<img src="${esc(p.icon)}" alt="" onerror="this.remove()">`:''}${esc(p.label)}`:'';
     $('wlist').hidden=!multi;$('wmore').hidden=true;
     $('wname').hidden=multi;$('weve').hidden=true;$('wprize').hidden=true;$('wnote').hidden=multi;
@@ -1190,18 +1192,18 @@ function apply(st){
       $('wpic').hidden=true;$('winner').classList.remove('has-pic');
       const max=12;
       $('wlist').innerHTML=ws.slice(0,max).map((w,i)=>{
-        const ev=w.eve;const pic=ev&&ev.portrait;
+        const ev=card(w);const pic=ev&&ev.pic;
         return `<div class="wcard">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.outerHTML='<div class=&quot;ph none&quot;>${i+1}</div>'">`:`<div class="ph none">${i+1}</div>`}
-          <b>@${esc(w.login)}</b>${ev?`<span class="ev">${esc(ev.name)} ${esc(tick(ev))}</span>`:''}
+          <b>@${esc(w.login)}</b>${ev?`<span class="ev">${esc(ev.name)} ${esc(ev.tick)}</span>`:''}
           ${w.prize?`<span class="pz">${prizeHtml(w.prize)}</span>`:`<span class="no">${esc(U('winner_n',{n:i+1}))}</span>`}</div>`;}).join('');
       if(ws.length>max){$('wmore').hidden=false;$('wmore').textContent=U('more',{n:ws.length-max});}
     }else{
-      const w=ws[0],ev=w.eve;
+      const w=ws[0],ev=card(w);
       $('wname').textContent='@'+w.login;
       $('weve').hidden=!ev;
-      if(ev){const t=tick(ev);$('weve').innerHTML=`${esc(ev.name)}${t?`<span>${esc(t)}</span>`:''}`;}
+      if(ev){const t=ev.tick;$('weve').innerHTML=`${esc(ev.name)}${t?`<span>${esc(t)}</span>`:''}`;}
       $('wprize').hidden=!w.prize;$('wprize').innerHTML=prizeHtml(w.prize);
-      const pic=ev&&ev.portrait;
+      const pic=ev&&ev.pic;
       if(pic&&$('wimg').getAttribute('src')!==pic){$('wimg').src=pic;}
       $('wpic').hidden=!pic;$('winner').classList.toggle('has-pic',!!pic);
       $('wnote').textContent=st.run&&st.run.converged?U('converged_note'):U('winner_note',{count:st.count,os:st.run?st.run.os:0,max:st.run?st.run.os_max:40});

@@ -24,6 +24,8 @@ button,input{font:inherit;color:inherit}
 .conn.off::before{background:var(--glitch)}
 .conn.off{color:var(--glitch)}
 
+.upbanner{margin:0 0 8px;padding:7px 10px;border:1px solid var(--gold);border-radius:3px;color:var(--gold);font-size:13px}
+.upbanner a{color:var(--gold);font-weight:700}
 .status{border:1px solid var(--line);border-left:3px solid var(--tone,var(--decker));background:var(--panel);padding:10px 12px;border-radius:3px}
 .status .label{font-size:13px;color:var(--tone,var(--decker));font-weight:600}
 .big{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:2px}
@@ -121,6 +123,7 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
 <body>
 <div id="conn" class="conn off">Verbinde …</div>
 
+<div id="upbanner" class="upbanner" hidden></div>
 <section id="status" class="status" aria-live="polite">
   <div id="label" class="label">—</div>
   <div class="big">
@@ -204,7 +207,17 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
       <label for="s_eveurl">eve2twitch-URL</label><input type="text" id="s_eveurl" name="eve_api_url">
       <label for="s_evekey">eve2twitch-Key</label><input type="password" id="s_evekey" name="eve_api_key">
       <label for="s_evebot">Eve2Twitch-Bot</label><input type="text" id="s_evebot" name="eve2twitch_bot_name" placeholder="leer = alle">
-      <label class="chk"><input type="checkbox" name="hide_eve_names"> EVE-Namen und Porträts im Overlay verbergen</label>
+      <label class="chk"><input type="checkbox" name="hide_eve_names"> Spielnamen und Porträts im Overlay verbergen</label>
+    </div>
+    <h3>Spielnamen anderer Spiele</h3>
+    <div class="form">
+      <label for="s_games">Spiele</label><textarea id="s_games" name="games_text" rows="3" placeholder="wow !wow WoW-Charakter"></textarea>
+      <div class="hint">Je Zeile: Kennung, Befehl, Bezeichnung. Zuschauer schreiben z. B. „!palia Name“. Welcher Name beim Gewinner erscheint, legt das Design fest.</div>
+      <label for="s_wowid">WoW Client-ID</label><input type="text" id="s_wowid" name="wow_client_id" placeholder="develop.battle.net">
+      <label for="s_wowsec">WoW Secret</label><input type="password" id="s_wowsec" name="wow_client_secret">
+      <label for="s_wowreg">WoW Region</label><select id="s_wowreg" name="wow_region"><option value="eu">EU</option><option value="us">US</option><option value="kr">KR</option><option value="tw">TW</option></select>
+      <label for="s_wowrealm">Standard-Realm</label><input type="text" id="s_wowrealm" name="wow_realm" placeholder="wenn im Chat nur „!wow Name“ steht">
+      <div class="hint">Mit Blizzard-Zugang prüft „!wow Name-Realm“ den Charakter und zeigt Bild, Klasse, Stufe und Gilde. Ohne Zugang wird der Name ungeprüft gespeichert.</div>
     </div>
     <h3>Programm</h3>
     <div class="form">
@@ -212,6 +225,9 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
       <div class="hint warn">Nach einem Port-Wechsel die URLs in OBS (Overlay, Timer, Dock) anpassen.</div>
       <label class="chk"><input type="checkbox" name="start_in_tray"> Beim Start nur im Tray (Linux: minimiert)</label>
       <label class="chk"><input type="checkbox" name="close_to_tray"> Fenster-X schließt in den Tray (Windows)</label>
+      <label class="chk"><input type="checkbox" name="update_check"> Beim Start nach neuer Version suchen</label>
+      <div class="hint"><span id="upver"></span> · <span id="upstat"></span><br>
+        <button class="mini" type="button" id="upcheck">Jetzt prüfen</button> <button class="mini" type="button" id="upinstall" hidden>Aktualisieren</button></div>
     </div>
     <div class="savebar">
       <button class="btn" type="submit" id="cfgsave">Speichern</button>
@@ -336,9 +352,9 @@ function render(){
 
   const ws=s.phase==='winner'?(s.winners||[]):[];
   $('winners').hidden=!ws.length;
-  $('winners').innerHTML=ws.map((w,i)=>{const e=w.eve;
-    const pic=e&&e.id?`https://images.evetech.net/characters/${e.id}/portrait?size=64`:'';
-    const tick=e?[e.name,e.corp?`[${e.corp}]`:'',e.alliance?`<${e.alliance}>`:''].filter(Boolean).join(' '):'';
+  $('winners').innerHTML=ws.map((w,i)=>{const e=w.eve,g=w.ign;
+    const pic=e&&e.id?`https://images.evetech.net/characters/${e.id}/portrait?size=64`:(g&&g.portrait)||'';
+    const tick=e?[e.name,e.corp?`[${e.corp}]`:'',e.alliance?`<${e.alliance}>`:''].filter(Boolean).join(' '):g?[g.name,g.sub].filter(Boolean).join(' · '):'';
     const pz=w.prize?`<span class="pz">${w.prize.icon?`<img src="${esc(w.prize.icon)}" alt="" onerror="this.remove()">`:''}${esc(w.prize.label)}</span>`:'';
     return `<div class="winner">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.remove()">`:''}<div><small>${ws.length>1?`Gewinner ${i+1}`:'Gewinner'}</small><strong>@${esc(w.login)}</strong>${tick?`<span>${esc(tick)}</span>`:''}${pz}</div></div>`;}).join('');
 
@@ -347,7 +363,7 @@ function render(){
   const log=$('log');const atEnd=log.scrollTop+log.clientHeight>=log.scrollHeight-4;
   log.innerHTML=s.log.map(l=>`<p class="${esc(l.tone)}"><time>${esc(l.stamp)}</time>${esc(l.text)}</p>`).join('');
   if(atEnd)log.scrollTop=log.scrollHeight;
-  if(s.settings){fillSettings(s.settings);fillPrizes(s.settings);fillSso(s.settings);}
+  if(s.settings){fillSettings(s.settings);fillPrizes(s.settings);fillSso(s.settings);fillUpdate(s.settings);}
   tick();
 }
 function tick(){
@@ -378,6 +394,7 @@ function fillSettings(c){
   }
   $('s_token').placeholder=c.oauth_token_set?'gesetzt – leer lassen, um es zu behalten':'nicht gesetzt';
   $('s_evekey').placeholder=c.eve_api_key_set?'gesetzt – leer lassen':'nicht gesetzt';
+  $('s_wowsec').placeholder=c.wow_client_secret_set?'gesetzt – leer lassen':'nicht gesetzt';
   $('s_token_hint').textContent='Tokens werden nie angezeigt; nur ein neu eingetragener Wert wird gespeichert.';
 }
 function msg(id,text,ok){const m=$(id);m.textContent=text;m.className='msg '+(ok?'ok':'err');}
@@ -407,6 +424,16 @@ cfgForm.addEventListener('submit',async ev=>{
   if(r.ok){cfgDirty=false;msg('cfgmsg','Gespeichert.',true);}
   else msg('cfgmsg',r.error||'Nicht gespeichert.',false);
 });
+// Update
+function fillUpdate(c){
+  $('upver').textContent=`Installiert: v${c.version}`;$('upstat').textContent=c.update_status||'';
+  const u=c.update;$('upinstall').hidden=!(u&&u.asset);$('upinstall').disabled=!!c.update_busy;$('upcheck').disabled=!!c.update_busy;
+  if(u)$('upinstall').textContent=`Auf v${u.version} aktualisieren`;
+  $('upbanner').hidden=!u;if(u)$('upbanner').innerHTML=`Neue Version <b>v${esc(u.version)}</b> verfügbar – <a href="#" id="upgo">jetzt aktualisieren</a>`;
+  const go=$('upgo');if(go)go.onclick=ev=>{ev.preventDefault();$('upinstall').click();};
+}
+$('upcheck').onclick=async()=>{const r=await cmd({cmd:'updatecheck'});if(!r.ok)msg('cfgmsg',r.error||'Fehler',false);};
+$('upinstall').onclick=async()=>{const r=await cmd({cmd:'updateinstall'});msg('cfgmsg',r.ok?'Update wird geladen – das Programm startet danach neu.':(r.error||'Fehler'),r.ok);};
 $('themepreview').onclick=ev=>{ev.preventDefault();window.open(`/test?theme=${encodeURIComponent($('s_theme').value)}`,'_blank');};
 $('themereload').onclick=async ev=>{ev.preventDefault();const r=await cmd({cmd:'reloadthemes'});
   msg('cfgmsg',r.ok?'Designs neu geladen.':(r.error||'Fehler'),r.ok);};

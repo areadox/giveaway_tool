@@ -60,6 +60,17 @@ pub struct Config {
     pub overlay_show_open: bool,
     /// Design für Overlay und Timer-Anzeige (Ordnername, z. B. "shadowrun", "eve").
     pub theme: String,
+    /// Chatbefehle für Spielnamen anderer Spiele (EVE hat `eve_command`).
+    pub games: Vec<GameCmd>,
+    /// Blizzard-API für WoW-Charaktere (develop.battle.net)
+    pub wow_client_id: String,
+    pub wow_client_secret: String,
+    /// eu | us | kr | tw
+    pub wow_region: String,
+    /// Realm, wenn im Chat keiner angegeben ist
+    pub wow_realm: String,
+    /// Beim Start auf GitHub nach einer neuen Version suchen
+    pub update_check: bool,
     /// Unbekannte Schlüssel bleiben beim Speichern erhalten.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -101,6 +112,12 @@ impl Default for Config {
             close_to_tray: true,
             overlay_show_open: true,
             theme: crate::themes::DEFAULT_ID.into(),
+            games: default_games(),
+            wow_client_id: String::new(),
+            wow_client_secret: String::new(),
+            wow_region: "eu".into(),
+            wow_realm: String::new(),
+            update_check: true,
             decker_name: String::new(),
             extra: Map::new(),
         }
@@ -124,6 +141,23 @@ impl Config {
         } else {
             k.to_string()
         }
+    }
+
+    /// Spiele samt Befehl als Text („wow !wow WoW-Charakter“, je Zeile).
+    pub fn games_text(&self) -> String {
+        self.games
+            .iter()
+            .map(|g| {
+                format!("{} {} {}", g.game, g.command, g.label)
+                    .trim()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    pub fn wow_ready(&self) -> bool {
+        !self.wow_client_id.trim().is_empty() && !self.wow_client_secret.trim().is_empty()
     }
 
     pub fn eve_command_or_default(&self) -> String {
@@ -314,5 +348,97 @@ mod tests {
         assert_eq!(back.winners, 3);
         assert_eq!(back.prizes, c.prizes);
         assert_eq!(back.eve_sso_character_id, Some(2112625428));
+    }
+}
+
+/// Ein Spiel mit eigenem Spielnamen-Befehl im Chat.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GameCmd {
+    /// Kennung (z. B. "wow", "palia"); Designs verweisen mit `ign_game` darauf
+    pub game: String,
+    /// Chatbefehl, z. B. "!wow"
+    pub command: String,
+    /// Bezeichnung für Anzeige und Chat, z. B. "WoW-Charakter"
+    pub label: String,
+}
+
+pub fn default_games() -> Vec<GameCmd> {
+    vec![
+        GameCmd {
+            game: "wow".into(),
+            command: "!wow".into(),
+            label: "WoW-Charakter".into(),
+        },
+        GameCmd {
+            game: "palia".into(),
+            command: "!palia".into(),
+            label: "Palia-Name".into(),
+        },
+    ]
+}
+
+/// Liest „id !befehl Bezeichnung“ je Zeile. `eve` ist reserviert (hat eigenen Befehl).
+pub fn parse_games(text: &str) -> Result<Vec<GameCmd>, String> {
+    let mut out: Vec<GameCmd> = vec![];
+    for (i, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut it = line.splitn(3, char::is_whitespace);
+        let game = it.next().unwrap_or("").trim().to_lowercase();
+        let command = it.next().unwrap_or("").trim().to_lowercase();
+        let label = it.next().unwrap_or("").trim().to_string();
+        let z = i + 1;
+        if game.is_empty()
+            || !game
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(format!(
+                "Spielnamen Zeile {z}: Kennung nur aus a–z, 0–9, - und _"
+            ));
+        }
+        if game == "eve" {
+            return Err(format!(
+                "Spielnamen Zeile {z}: EVE hat einen eigenen Befehl (EVE-Einstellungen)"
+            ));
+        }
+        if command.len() < 2 || command.contains(char::is_whitespace) {
+            return Err(format!(
+                "Spielnamen Zeile {z}: Befehl fehlt (z. B. !{game})"
+            ));
+        }
+        if out.iter().any(|g| g.game == game || g.command == command) {
+            return Err(format!("Spielnamen Zeile {z}: {game} / {command} doppelt"));
+        }
+        let label = if label.is_empty() {
+            format!("{game}-Name")
+        } else {
+            label
+        };
+        out.push(GameCmd {
+            game,
+            command,
+            label,
+        });
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod games_tests {
+    use super::*;
+    #[test]
+    fn parse() {
+        let g = parse_games("wow !wow WoW-Charakter\n\n# Kommentar\npalia !Palia\n").unwrap();
+        assert_eq!(g.len(), 2);
+        assert_eq!(g[1].command, "!palia");
+        assert_eq!(g[1].label, "palia-Name");
+        assert!(parse_games("eve !e x").is_err());
+        assert!(parse_games("wow !wow\nwow !w").is_err());
+        assert!(parse_games("w o w").is_err(), "Befehl zu kurz");
+        let c = Config::default();
+        assert_eq!(parse_games(&c.games_text()).unwrap(), c.games);
     }
 }

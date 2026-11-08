@@ -2,6 +2,7 @@
   "name": "EVE Online – Data-Site",
   "description": "Data-Site hacken wie im Spiel: Virus mit Kohärenz und Stärke, Knoten öffnen, Firewalls und Anti-Viren knacken, Systemkern, Loot-Spew.",
   "game": "datasite",
+  "ign_game": "eve",
   "font_url": "https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&display=swap",
   "shape": "ring",
   "ui": {

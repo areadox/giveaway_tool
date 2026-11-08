@@ -312,9 +312,17 @@ async fn demo(
         .iter()
         .enumerate()
         .map(|(i, w)| {
+            // Beispiel-Spielname passend zum Design (WoW, Palia, …)
+            let ign = match theme.info.ign_game.as_str() {
+                "eve" => serde_json::Value::Null,
+                "wow" => serde_json::json!({"game": "wow", "label": "WoW-Charakter", "name": format!("{}-Blackrock", capitalize(w)),
+                    "sub": (["Stufe 80 Magier · <Nachtwache>", "Stufe 80 Paladin", "Stufe 72 Jäger · <Sturmwind Rangers>"][i % 3]), "portrait": null}),
+                g => serde_json::json!({"game": g, "label": "Spielname", "name": capitalize(w), "sub": null, "portrait": null}),
+            };
             serde_json::json!({
                 "login": w,
                 "eve": null,
+                "ign": ign,
                 "prize": crate::prize::for_winner(&prizes, "", i),
             })
         })
@@ -491,4 +499,11 @@ async fn client(mut socket: WebSocket, mut rx: watch::Receiver<String>) {
             }
         }
     }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map(|f| f.to_uppercase().chain(c).collect())
+        .unwrap_or_default()
 }

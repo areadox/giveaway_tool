@@ -32,6 +32,30 @@ impl User {
     }
 }
 
+/// Spielname eines Zuschauers für ein anderes Spiel als EVE.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GameName {
+    pub twitch_login: String,
+    pub game: String,
+    pub name: String,
+    /// Zusatzdaten (bei WoW: Realm, Klasse, Stufe, Gilde, Bild)
+    pub info: Option<serde_json::Value>,
+    pub updated_at: String,
+}
+
+impl GameName {
+    fn from_row(r: &Row<'_>) -> rusqlite::Result<Self> {
+        let info: Option<String> = r.get(3)?;
+        Ok(Self {
+            twitch_login: r.get(0)?,
+            game: r.get(1)?,
+            name: r.get(2)?,
+            info: info.and_then(|s| serde_json::from_str(&s).ok()),
+            updated_at: r.get(4)?,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoryRow {
     pub winner: String,
@@ -123,7 +147,69 @@ impl Db {
         if !has_prize {
             c.execute_batch("ALTER TABLE giveaway_history ADD COLUMN prize TEXT;")?;
         }
+        // Ab 0.0.13: Spielnamen für andere Spiele (WoW, Palia, …); EVE bleibt in `users`
+        c.execute_batch(
+            "CREATE TABLE IF NOT EXISTS game_names (
+                twitch_login TEXT NOT NULL COLLATE NOCASE, game TEXT NOT NULL,
+                name TEXT NOT NULL, info TEXT, updated_at TEXT NOT NULL,
+                PRIMARY KEY (twitch_login, game));",
+        )?;
         Ok(db)
+    }
+
+    /// Spielname eines Zuschauers für ein Spiel setzen (ersetzt den alten).
+    pub fn set_game_name(
+        &self,
+        login: &str,
+        game: &str,
+        name: &str,
+        info: Option<&serde_json::Value>,
+    ) -> Result<(), DbError> {
+        let login = clean_login(login);
+        let name = name.trim();
+        if login.is_empty() || name.is_empty() || game.trim().is_empty() {
+            return Err(DbError::Invalid(
+                "Twitch-Login, Spiel und Name dürfen nicht leer sein".into(),
+            ));
+        }
+        self.conn()?.execute(
+            "INSERT INTO game_names(twitch_login,game,name,info,updated_at) VALUES(?,?,?,?,?)
+             ON CONFLICT(twitch_login,game) DO UPDATE SET name=excluded.name, info=excluded.info, updated_at=excluded.updated_at",
+            params![login, game.trim().to_lowercase(), name, info.map(|v| v.to_string()), now_iso()],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_game_name(&self, login: &str, game: &str) -> Option<GameName> {
+        let c = self.conn().ok()?;
+        c.query_row(
+            "SELECT twitch_login, game, name, info, updated_at FROM game_names WHERE twitch_login=? COLLATE NOCASE AND game=?",
+            params![clean_login(login), game.to_lowercase()],
+            GameName::from_row,
+        )
+        .optional()
+        .ok()
+        .flatten()
+    }
+
+    pub fn list_game_names(&self) -> Vec<GameName> {
+        let Ok(c) = self.conn() else { return vec![] };
+        let Ok(mut st) = c.prepare(
+            "SELECT twitch_login, game, name, info, updated_at FROM game_names ORDER BY game, twitch_login COLLATE NOCASE",
+        ) else {
+            return vec![];
+        };
+        st.query_map([], GameName::from_row)
+            .map(|it| it.filter_map(Result::ok).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn delete_game_name(&self, login: &str, game: &str) -> Result<(), DbError> {
+        self.conn()?.execute(
+            "DELETE FROM game_names WHERE twitch_login=? COLLATE NOCASE AND game=?",
+            params![clean_login(login), game.to_lowercase()],
+        )?;
+        Ok(())
     }
 
     fn conn(&self) -> Result<Connection, DbError> {
@@ -269,6 +355,30 @@ impl Db {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn game_names() {
+        let p = std::env::temp_dir().join(format!("cg-gn-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        let db = Db::open(&p).unwrap();
+        db.set_game_name(
+            "@Alice",
+            "WoW",
+            "Thrall",
+            Some(&serde_json::json!({"realm":"Blackrock"})),
+        )
+        .unwrap();
+        db.set_game_name("alice", "palia", "Ali", None).unwrap();
+        db.set_game_name("ALICE", "wow", "Jaina", None).unwrap();
+        let g = db.get_game_name("alice", "wow").unwrap();
+        assert_eq!(g.name, "Jaina");
+        assert!(g.info.is_none());
+        assert_eq!(db.list_game_names().len(), 2);
+        assert!(db.set_game_name("bob", "wow", "  ", None).is_err());
+        db.delete_game_name("alice", "palia").unwrap();
+        assert!(db.get_game_name("alice", "palia").is_none());
+        let _ = std::fs::remove_file(&p);
+    }
 
     #[test]
     fn roundtrip_and_duplicate() {

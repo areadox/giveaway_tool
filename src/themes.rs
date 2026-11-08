@@ -129,6 +129,8 @@ pub struct ThemeInfo {
     pub shape: String,
     /// Spielablauf: dice | datasite | treasure | riddle | battle
     pub game: String,
+    /// Welcher Spielname beim Gewinner gezeigt wird: "eve" oder eine Spiel-Kennung (z. B. "wow")
+    pub ign_game: String,
     pub ui: Map<String, Value>,
     pub builtin: bool,
 }
@@ -184,6 +186,12 @@ fn parse(id: &str, json: &str, css: &str, builtin: bool) -> Result<Theme, String
             font_url: s("font_url", base_font),
             shape,
             game: game.to_string(),
+            ign_game: v
+                .get("ign_game")
+                .and_then(Value::as_str)
+                .map(|g| g.trim().to_lowercase())
+                .filter(|g| !g.is_empty())
+                .unwrap_or_else(|| "eve".into()),
             ui,
             builtin,
         },
