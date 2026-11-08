@@ -4,7 +4,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.6**
+Aktuelle Version: **0.0.7**
 
 ## Funktionen
 
@@ -142,6 +142,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.7 | EVE-Anmeldung: ein Rückruf aus einem älteren Anmeldeversuch bricht die laufende Anmeldung nicht mehr ab |
 | 0.0.6 | EVE-Anmeldung fragt standardmäßig nur noch den Asset-Scope an; Strukturnamen optional per Haken; verständliche Meldung bei fehlendem Scope |
 | 0.0.5 | Mehrere Gewinner; Preisbeschreibung und Preisliste (Overlay, Timer, Dock, Chat, Verlauf); EVE-Anmeldung und Auswahl von Preisen aus den eigenen Assets |
 | 0.0.4 | Bedien-Dock für OBS unter `/dock` (Steuerung, Status, Auto-Giveaway-Schalter, Protokoll); nur lokal erreichbar |

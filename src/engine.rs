@@ -1583,20 +1583,28 @@ impl Engine {
     }
 
     fn sso_callback(&mut self, code: String, state: String) {
+        // Nur die zur letzten Anmeldung passende Rückkehr annehmen; eine alte
+        // (z. B. aus einem früheren Browser-Tab) verbraucht die laufende nicht.
+        match &self.sso_pending {
+            None => {
+                self.log(
+                    "EVE-Anmeldung: Rückruf ohne laufende Anmeldung – bitte im Tool „Mit EVE verbinden“ klicken.",
+                    Tone::Yellow,
+                );
+                return;
+            }
+            Some(p) if p.state != state => {
+                self.log(
+                    "EVE-Anmeldung: Rückruf aus einem älteren Anmeldeversuch ignoriert – bitte den zuletzt geöffneten Browser-Tab verwenden.",
+                    Tone::Yellow,
+                );
+                return;
+            }
+            _ => {}
+        }
         let Some(pending) = self.sso_pending.take() else {
-            self.log(
-                "EVE-Anmeldung: unerwarteter Rückruf ignoriert.",
-                Tone::Yellow,
-            );
             return;
         };
-        if pending.state != state {
-            self.log(
-                "EVE-Anmeldung: Sicherheitsprüfung fehlgeschlagen (state). Bitte neu verbinden.",
-                Tone::Red,
-            );
-            return;
-        }
         let client = self.cfg.eve_sso_client_id.clone();
         let tx = self.tx.clone();
         self.assets_status = "Anmeldung wird abgeschlossen …".into();
