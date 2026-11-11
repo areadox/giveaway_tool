@@ -24,8 +24,5 @@
   "close_message": "🔒 Giveaway geschlossen.",
   "sound": true,
   "eve_enabled": false,
-  "eve_command": "!eve",
-  "eve_api_url": "",
-  "eve_api_key": "",
-  "eve2twitch_bot_name": ""
+  "eve_command": "!eve"
 }

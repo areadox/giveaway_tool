@@ -1,0 +1,35 @@
+{
+  "name": "Palia style – Village Treasure Hunt",
+  "description": "Treasure hunt in the village: collect clues on the map, dig (hot or cold), raise the treasure chest, draw tickets.",
+  "ui": {
+    "open_title": "The treasure hunt begins!",
+    "open_call": "Type {kw} in chat to join the search.",
+    "open_count": "villagers joined",
+    "open_until": "until we set off",
+    "open_manual": "set off manually",
+    "prize": "In the chest:",
+    "winner_one": "Treasure found! The winner is",
+    "winner_many": "Treasure found! {n} winners",
+    "more": "… and {n} more – full list in chat",
+    "conn_idle": "Overlay connected – waiting for the next treasure hunt",
+    "demo": "Demo mode",
+    "t_wait": "Next treasure hunt in",
+    "t_wait_prize": "Next treasure hunt: {prize}",
+    "t_open": "Type {kw} · {prize}",
+    "t_open_noprize": "Type {kw} – join in!",
+    "t_run": "The search is on",
+    "t_run_value": "SEARCH",
+    "t_winner": "Found by",
+    "t_winner_prize": "Found · {prize}",
+    "t_manual": "Manual"
+  },
+  "lists": {
+    "demo_prizes": [
+      "Cozy sofa",
+      "Golden fishing rod",
+      "Cake recipe",
+      "Lantern set",
+      "Seed bundle"
+    ]
+  }
+}

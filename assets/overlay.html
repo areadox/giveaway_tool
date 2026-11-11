@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Matrix-Run Overlay</title>
+<title>Cyber Giveaway Overlay</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link id="tfont" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -1042,7 +1042,7 @@ function renderBattle(sc,prev,fxNew){
     case 'hit':case 'dodge':{const o=fxEl('orbshot',{left:`${bp.x}px`,top:`${bp.y}px`},700);o.style.setProperty('--dx',`${hp.x-bp.x}px`);o.style.setProperty('--dy',`${hp.y-bp.y}px`);restart(boss,'cast');
       later(380,()=>{if(sc.fx==='hit'){restart(hero,'hurt');tint(COL.host,.3);shake(9,380);burst(hp.x,hp.y,26,{kind:'dot',col:'#8a2be2',speed:260,life:.7,size:4,glow:10});if(sc.dmg)pop('hero',sc.dmg.n,false);}
         else{restart(hero,'dodge');fxEl('ghost',{left:`${hp.x-hp.w/2}px`,top:`${hp.y-hp.h/2}px`,width:`${hp.w}px`,height:`${hp.h}px`},600);
-          emit({kind:'text',text:'Nachbild!',x:hp.x,y:hp.y-hp.h*.7,vy:-40,life:1.1,size:22,col:COL.decker,pop:1});}});break;}
+          emit({kind:'text',text:U('bt_dodge')||'Nachbild!',x:hp.x,y:hp.y-hp.h*.7,vy:-40,life:1.1,size:22,col:COL.decker,pop:1});}});break;}
     case 'form':restart(boss,'powerup');later(200,()=>{flash(.45);shake(16,700);[0,150,300].forEach(d=>later(d,()=>ring(bp.x,bp.y,COL.host,260,1,6,30)));
       burst(bp.x,bp.y,50,{kind:'spark',col:COL.host,speed:420,life:.7,size:3,glow:12});});break;
     case 'power':{const W=$('gstage').clientWidth,H=$('gstage').clientHeight;(sc.sparks||[]).forEach((n,i)=>later(i*90,()=>{
@@ -1222,7 +1222,7 @@ function connect(){
   const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
   ws.onopen=()=>{retry=500;$('idle').className='idle';$('idle').textContent=U('conn_idle');};
   ws.onmessage=e=>{try{apply(JSON.parse(e.data))}catch(err){console.error(err)}};
-  ws.onclose=()=>{$('idle').className='idle off';$('idle').textContent=U('conn_off')||'Keine Verbindung zum Giveaway-Tool';
+  ws.onclose=()=>{$('idle').className='idle off';$('idle').textContent=U('conn_off')||'—';
     apply({visible:false,mode:'idle'});setTimeout(connect,retry);retry=Math.min(10000,retry*1.7);};
 }
 async function runDemo(){

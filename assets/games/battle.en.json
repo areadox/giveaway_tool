@@ -1,0 +1,86 @@
+{
+  "ui": {
+    "bt_hp": "HP",
+    "bt_combo": "Combo",
+    "bt_power": "Friendship",
+    "bt_dodge": "Afterimage!",
+    "register": "The cards of fate",
+    "winner_note": "{count} allies sent their power"
+  },
+  "texts": {
+    "phase.transform": "TRANSFORMATION",
+    "phase.appear": "THE BOSS",
+    "phase.fight": "BATTLE",
+    "phase.power": "FRIENDSHIP",
+    "phase.ult": "ULTIMATE",
+    "phase.fin": "FATE",
+    "phase.done": "VICTORY",
+    "bt.pt.transform": "{decker} transforms!",
+    "bt.pt.appear": "{boss} confronts {decker}!",
+    "bt.pt.fight": "Battle – form {n}",
+    "bt.pt.power": "Everyone sends {decker} their power!",
+    "bt.pt.ult": "The ultimate technique!",
+    "fin.start": "The cards of fate are turning …",
+    "fin.left1": "Fate chooses … 1 card left",
+    "fin.left": "Fate chooses … {n} cards left",
+    "pt.done": "Victory! – To be continued …",
+    "bt.cut.transform": "POWER OF THE STARS – TRANSFORM!",
+    "bt.cut.form2": "That … wasn't even my true form!",
+    "bt.cut.form3": "Now behold my FINAL FORM!",
+    "bt.log.transform": "Pillar of light! {decker} is ready to fight",
+    "bt.log.appear": "{boss}: “{line}”",
+    "bt.log.attack": "{move}! −{n} HP for {boss}",
+    "bt.log.crit": "CRITICAL! {move}! −{n} HP for {boss}",
+    "bt.log.form": "{boss} transforms – form {n}!",
+    "bt.log.dodge": "{move} – just an afterimage! Dodged",
+    "bt.log.hit": "{boss}: {move}! −{n} HP",
+    "bt.log.power": "{n} allies send their power!",
+    "bt.log.ult": "ULTIMATE TECHNIQUE: {move}!",
+    "bt.log.ko": "{boss} is defeated!",
+    "log.register": "{n} cards of fate are ready",
+    "log.win1": "VICTORY // Chosen: {list}",
+    "log.winN": "VICTORY // {n} chosen: {list}",
+    "log.and_more": "{list} and {n} more"
+  },
+  "lists": {
+    "arenas": [
+      "Tower of Fate",
+      "Academy of Stars",
+      "Castle above the Sea of Clouds",
+      "Shrine of a Thousand Gates",
+      "Neo Arcade 2099"
+    ],
+    "bosses": [
+      "Shadow Emperor Kurogane",
+      "Yoru the Moon Witch",
+      "General Raijin",
+      "Demon Lord Akuma",
+      "Queen of Thorns"
+    ],
+    "boss_lines": [
+      "You're too late, hero!",
+      "Your friends can't save you!",
+      "Finally, a worthy opponent …",
+      "I've been waiting for this moment!"
+    ],
+    "moves": [
+      "STAR STRIKE",
+      "CHERRY BLOSSOM WHIRL",
+      "THUNDER FIST",
+      "CRESCENT MOON BLADE",
+      "COMET KICK",
+      "HEART BEAM"
+    ],
+    "boss_moves": [
+      "Shadow Wave",
+      "Thorn Rain",
+      "Hellfire",
+      "Dark Lightning"
+    ],
+    "ultimates": [
+      "STAR OATH – ENDLESS SKY",
+      "POWER OF FRIENDSHIP – FINAL BEAM",
+      "THOUSAND BLOSSOMS – LAST DANCE"
+    ]
+  }
+}

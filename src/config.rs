@@ -21,9 +21,6 @@ pub struct Config {
     pub sound: bool,
     pub eve_enabled: bool,
     pub eve_command: String,
-    pub eve_api_url: String,
-    pub eve_api_key: String,
-    pub eve2twitch_bot_name: String,
     /// Dauer des simulierten Matrix-Runs in Sekunden (neu in der Rust-Version).
     pub hack_duration: f64,
     /// Name des Deckers im Overlay; leer = Twitch-Channel (neu in der Rust-Version).
@@ -58,6 +55,8 @@ pub struct Config {
     /// Große Teilnahme-Anzeige („Host-Zugang offen“) im Overlay zeigen.
     /// Aus, wenn die kleine Timer-Anzeige (/timer) genutzt wird.
     pub overlay_show_open: bool,
+    /// Sprache von Programm, Dock, Overlay und Chat: "de" oder "en"
+    pub language: String,
     /// Design für Overlay und Timer-Anzeige (Ordnername, z. B. "shadowrun", "eve").
     pub theme: String,
     /// Chatbefehle für Spielnamen anderer Spiele (EVE hat `eve_command`).
@@ -76,6 +75,44 @@ pub struct Config {
     pub extra: Map<String, Value>,
 }
 
+/// Standard-Chattexte je Sprache: (Start, Ende, Gewinner).
+pub fn default_messages(lang: &str) -> [&'static str; 3] {
+    if lang == "en" {
+        [
+            "🔓 Giveaway open! Type {keyword} to enter.",
+            "🔒 Giveaway closed. Good luck!",
+            "🎉 BREACH SUCCESSFUL! Winner: @{winner} - congratulations!",
+        ]
+    } else {
+        [
+            "🔓 Giveaway geöffnet! Schreibe {keyword}, um teilzunehmen.",
+            "🔒 Giveaway geschlossen. Viel Glück!",
+            "🎉 BREACH ERFOLGREICH! Gewinner: @{winner} - herzlichen Glückwunsch!",
+        ]
+    }
+}
+
+impl Config {
+    /// Sprache wechseln; unveränderte Standard-Chattexte wechseln mit.
+    pub fn switch_language(&mut self, lang: &str) {
+        let lang = if lang == "en" { "en" } else { "de" };
+        if self.language == lang {
+            return;
+        }
+        let old = default_messages(&self.language);
+        let new = default_messages(lang);
+        for (m, (o, n)) in [&mut self.open_message, &mut self.close_message, &mut self.win_message]
+            .into_iter()
+            .zip(old.iter().zip(new.iter()))
+        {
+            if m.trim() == *o || m.trim().is_empty() {
+                *m = n.to_string();
+            }
+        }
+        self.language = lang.into();
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -92,9 +129,6 @@ impl Default for Config {
             sound: true,
             eve_enabled: false,
             eve_command: "!eve".into(),
-            eve_api_url: String::new(),
-            eve_api_key: String::new(),
-            eve2twitch_bot_name: String::new(),
             hack_duration: 30.0,
             hide_eve_names: false,
             auto_enabled: false,
@@ -111,6 +145,7 @@ impl Default for Config {
             start_in_tray: true,
             close_to_tray: true,
             overlay_show_open: true,
+            language: "de".into(),
             theme: crate::themes::DEFAULT_ID.into(),
             games: default_games(),
             wow_client_id: String::new(),
@@ -212,6 +247,18 @@ pub fn load(path: &Path) -> Config {
     let Ok(Value::Object(mut map)) = serde_json::from_str::<Value>(&text) else {
         return Config::default();
     };
+    // Entfernte Einstellungen (eve2twitch wird nicht mehr gebraucht)
+    for k in ["eve_api_url", "eve_api_key", "eve2twitch_bot_name"] {
+        map.remove(k);
+    }
+    // Fehlende Chattexte in der eingestellten Sprache ergänzen
+    let lang = map.get("language").and_then(Value::as_str).unwrap_or("de").to_string();
+    for (k, m) in ["open_message", "close_message", "win_message"]
+        .into_iter()
+        .zip(default_messages(&lang))
+    {
+        map.entry(k).or_insert_with(|| Value::String(m.into()));
+    }
     let defaults = serde_json::to_value(Config::default()).unwrap_or(Value::Null);
     if let Value::Object(def) = defaults {
         for (k, dv) in def {
@@ -276,16 +323,16 @@ pub fn parse_duration(value: &str) -> Result<u64, String> {
             .parse()
             .map_err(|_| "Format muss mm:ss sein".to_string())?;
         if s > 59 {
-            return Err("Sekunden müssen zwischen 00 und 59 liegen".into());
+            return Err(t!("Sekunden müssen zwischen 00 und 59 liegen"));
         }
         return Ok(m * 60 + s);
     }
     let minutes: f64 = text
         .replace(',', ".")
         .parse()
-        .map_err(|_| "Ungültige Zahl".to_string())?;
+        .map_err(|_| t!("Ungültige Zahl"))?;
     if !minutes.is_finite() || minutes < 0.0 {
-        return Err("Minuten müssen eine nicht-negative Zahl sein".into());
+        return Err(t!("Minuten müssen eine nicht-negative Zahl sein"));
     }
     Ok((minutes * 60.0).round() as u64)
 }
@@ -298,6 +345,20 @@ pub fn format_clock(seconds: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn englisch_ohne_chattexte_bekommt_englische_standardtexte() {
+        let dir = std::env::temp_dir().join(format!("cg_lang_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("config.json");
+        std::fs::write(&p, r#"{"language":"en","eve_api_key":"x"}"#).unwrap();
+        let c = load(&p);
+        assert_eq!(c.open_message, default_messages("en")[0]);
+        let mut d = c.clone();
+        d.switch_language("de");
+        assert_eq!(d.win_message, default_messages("de")[2]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn durations() {

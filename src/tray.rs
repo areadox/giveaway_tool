@@ -67,9 +67,9 @@ mod win {
     impl Tray {
         pub fn new(actions: Actions) -> Result<Self, String> {
             let menu = Menu::new();
-            let show = MenuItem::new("Fenster anzeigen", true, None);
-            let dock = MenuItem::new("Bedien-Dock im Browser öffnen", true, None);
-            let overlay = MenuItem::new("Overlay-Demo öffnen", true, None);
+            let show = MenuItem::new(t!("Fenster anzeigen"), true, None);
+            let dock = MenuItem::new(t!("Bedien-Dock im Browser öffnen"), true, None);
+            let overlay = MenuItem::new(t!("Overlay-Demo öffnen"), true, None);
             let quit = MenuItem::new("Beenden", true, None);
             menu.append_items(&[
                 &show,
@@ -118,7 +118,7 @@ mod win {
                 Icon::from_rgba(super::icon_rgba(size), size, size).map_err(|e| e.to_string())?;
             let tray = TrayIconBuilder::new()
                 .with_menu(Box::new(menu))
-                .with_tooltip("Cyber Giveaway – Matrix-Run")
+                .with_tooltip("Cyber Giveaway")
                 .with_icon(icon)
                 .with_menu_on_left_click(false)
                 .build()

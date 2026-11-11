@@ -32,8 +32,8 @@ impl WowChar {
     pub fn summary(&self) -> String {
         let mut parts = vec![];
         let lc = match (self.level, &self.class) {
-            (Some(l), Some(c)) => format!("Stufe {l} {c}"),
-            (Some(l), None) => format!("Stufe {l}"),
+            (Some(l), Some(c)) => t!("Stufe {l} {c}", l = l, c = c),
+            (Some(l), None) => t!("Stufe {l}", l = l),
             (None, Some(c)) => c.clone(),
             _ => String::new(),
         };
@@ -50,7 +50,7 @@ impl WowChar {
 fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(8))
-        .user_agent("CyberGiveaway (WoW character lookup)")
+        .user_agent(&t!("CyberGiveaway (WoW character lookup)"))
         .build()
 }
 
@@ -125,21 +125,21 @@ fn token(id: &str, secret: &str) -> Result<String, String> {
     let basic = base64::engine::general_purpose::STANDARD.encode(key.as_bytes());
     let v: Value = agent()
         .post("https://oauth.battle.net/token")
-        .set("Authorization", &format!("Basic {basic}"))
+        .set("Authorization", &format!("Basic {basic}", basic = basic))
         .send_form(&[("grant_type", "client_credentials")])
         .map_err(|e| match e {
-            ureq::Error::Status(401, _) => "Blizzard-API: Client-ID oder Secret falsch".to_string(),
+            ureq::Error::Status(401, _) => t!("Blizzard-API: Client-ID oder Secret falsch").to_string(),
             ureq::Error::Status(c, _) => {
-                format!("Blizzard-API: Anmeldung fehlgeschlagen (HTTP {c})")
+                t!("Blizzard-API: Anmeldung fehlgeschlagen (HTTP {c})", c = c)
             }
-            other => format!("Blizzard-API nicht erreichbar: {other}"),
+            other => t!("Blizzard-API nicht erreichbar: {other}", other = other),
         })?
         .into_json()
         .map_err(|e| e.to_string())?;
     let tok = v
         .get("access_token")
         .and_then(Value::as_str)
-        .ok_or("Blizzard-API: kein Token erhalten")?
+        .ok_or(t!("Blizzard-API: kein Token erhalten"))?
         .to_string();
     let secs = v
         .get("expires_in")
@@ -159,7 +159,7 @@ fn token(id: &str, secret: &str) -> Result<String, String> {
 fn get(url: &str, token: &str) -> Result<Value, ureq::Error> {
     agent()
         .get(url)
-        .set("Authorization", &format!("Bearer {token}"))
+        .set("Authorization", &format!("Bearer {token}", token = token))
         .call()?
         .into_json()
         .map_err(|e| ureq::Error::from(std::io::Error::other(e)))
@@ -174,7 +174,8 @@ fn realm_slug(region: &str, realm: &str, token: &str) -> String {
     let list = match have {
         Some(l) => l,
         None => {
-            let url = format!("https://{region}.api.blizzard.com/data/wow/realm/index?namespace=dynamic-{region}&locale=de_DE");
+            let locale = if crate::i18n::is_en() { "en_US" } else { "de_DE" };
+            let url = format!("https://{region}.api.blizzard.com/data/wow/realm/index?namespace=dynamic-{region}&locale={locale}");
             let l: Vec<(String, String)> = get(&url, token)
                 .ok()
                 .and_then(|v| v.get("realms").and_then(Value::as_array).cloned())
@@ -230,15 +231,15 @@ pub fn lookup(
         percent_encode(&name.to_lowercase())
     );
     let v = get(
-        &format!("{base}?namespace=profile-{region}&locale=de_DE"),
+        &format!("{base}?namespace=profile-{region}&locale={}", if crate::i18n::is_en() { "en_US" } else { "de_DE" }),
         &tok,
     )
     .map_err(|e| match e {
         ureq::Error::Status(404, _) => {
-            format!("Charakter „{name}“ auf {realm} nicht gefunden (oder Profil nicht öffentlich)")
+            t!("Charakter „{name}“ auf {realm} nicht gefunden (oder Profil nicht öffentlich)", name = name, realm = realm)
         }
-        ureq::Error::Status(c, _) => format!("Blizzard-API: HTTP {c}"),
-        other => format!("Blizzard-API nicht erreichbar: {other}"),
+        ureq::Error::Status(c, _) => t!("Blizzard-API: HTTP {c}", c = c),
+        other => t!("Blizzard-API nicht erreichbar: {other}", other = other),
     })?;
     let image = get(
         &format!("{base}/character-media?namespace=profile-{region}"),

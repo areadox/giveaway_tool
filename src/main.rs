@@ -1,8 +1,10 @@
 //! Cyber Giveaway – Twitch-Giveaway-Tool mit OBS-Overlay und simuliertem
-//! Matrix-Run im Stil von Shadowrun.
+//! Auslosung in verschiedenen Spiel-Designs (Shadowrun, EVE, WoW-Stil, Palia-Stil, Anime).
 
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+#[macro_use]
+mod i18n;
 mod config;
 mod db;
 mod engine;
@@ -24,7 +26,7 @@ use std::sync::{Arc, Mutex};
 
 fn fatal(msg: &str) -> ! {
     rfd::MessageDialog::new()
-        .set_title("Cyber Giveaway")
+        .set_title(t!("Cyber Giveaway"))
         .set_description(msg)
         .set_level(rfd::MessageLevel::Error)
         .show();
@@ -40,7 +42,7 @@ pub fn restart_after_update(engine: &Arc<Mutex<engine::Engine>>, exe: &std::path
     // Webserver-Port freigeben, bevor die neue Version ihn belegt
     std::thread::sleep(std::time::Duration::from_millis(800));
     if let Err(err) = update::spawn(exe) {
-        fatal(&format!("{err}\nBitte das Programm von Hand neu starten."));
+        fatal(&t!("{err}\nBitte das Programm von Hand neu starten.", err = err));
     }
     std::process::exit(0);
 }
@@ -49,12 +51,13 @@ fn main() {
     update::cleanup();
     let cfg_path = config::config_path();
     let cfg = config::load(&cfg_path);
+    i18n::set_lang(&cfg.language);
     if !cfg_path.exists() {
         let _ = config::save(&cfg_path, &cfg);
     }
     let db = match db::Db::open(&config::db_path()) {
         Ok(db) => db,
-        Err(e) => fatal(&format!("Datenbank konnte nicht geöffnet werden: {e}")),
+        Err(e) => fatal(&t!("Datenbank konnte nicht geöffnet werden: {e}", e = e)),
     };
 
     // Ohne Fenster: nur Overlay-Server für Tests (`CyberGiveaway --headless`)
@@ -71,7 +74,7 @@ fn main() {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("MATRIX-RUN // Twitch Giveaway")
+            .with_title("Cyber Giveaway")
             .with_inner_size([600.0, 620.0])
             .with_min_inner_size([520.0, 480.0])
             .with_icon(std::sync::Arc::new(eframe::egui::IconData {
@@ -87,7 +90,7 @@ fn main() {
         options,
         Box::new(move |cc| Ok(Box::new(gui::GuiApp::new(cc, e2)))),
     ) {
-        fatal(&format!("Fenster konnte nicht gestartet werden: {e}"));
+        fatal(&t!("Fenster konnte nicht gestartet werden: {e}", e = e));
     }
     if let Ok(mut e) = engine.lock() {
         e.shutdown();

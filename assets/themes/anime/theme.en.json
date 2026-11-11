@@ -1,0 +1,35 @@
+{
+  "name": "Anime – Tower of Fate",
+  "description": "Boss fight with transformation, special attacks, three boss forms and the power of friendship from chat.",
+  "ui": {
+    "open_title": "The tower gate opens!",
+    "open_call": "Type {kw} in chat to join the team!",
+    "open_count": "allies on the team",
+    "open_until": "until the attack",
+    "open_manual": "attack manually",
+    "prize": "Reward:",
+    "winner_one": "Victory! The chosen one is",
+    "winner_many": "Victory! {n} chosen ones",
+    "more": "… and {n} more – full list in chat",
+    "conn_idle": "Overlay connected – waiting for the next episode",
+    "demo": "Demo mode",
+    "t_wait": "Next episode in",
+    "t_wait_prize": "Next episode: {prize}",
+    "t_open": "Type {kw} · {prize}",
+    "t_open_noprize": "Type {kw} – join in!",
+    "t_run": "Storming the tower",
+    "t_run_value": "GO!",
+    "t_winner": "Chosen",
+    "t_winner_prize": "Chosen · {prize}",
+    "t_manual": "Manual"
+  },
+  "lists": {
+    "demo_prizes": [
+      "Limited edition figure",
+      "Manga box",
+      "Plush mascot",
+      "Signed artbook",
+      "Cosplay voucher"
+    ]
+  }
+}

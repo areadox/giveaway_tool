@@ -95,12 +95,12 @@ pub fn check() -> Result<Option<Release>, String> {
         .set("Accept", "application/vnd.github+json")
         .call()
         .map_err(|e| match e {
-            ureq::Error::Status(c, _) => format!("GitHub antwortet mit HTTP {c}"),
-            other => format!("GitHub nicht erreichbar: {other}"),
+            ureq::Error::Status(c, _) => t!("GitHub antwortet mit HTTP {c}", c = c),
+            other => t!("GitHub nicht erreichbar: {other}", other = other),
         })?
         .into_json()
         .map_err(|e| e.to_string())?;
-    let r = release_from_json(&v).ok_or("Antwort von GitHub unverständlich")?;
+    let r = release_from_json(&v).ok_or(t!("Antwort von GitHub unverständlich"))?;
     Ok(is_newer(&r.version, VERSION).then_some(r))
 }
 
@@ -134,20 +134,20 @@ pub fn install(r: &Release) -> Result<PathBuf, String> {
     let url = r
         .asset
         .as_ref()
-        .ok_or_else(|| format!("Im Release v{} gibt es kein {}", r.version, asset_name()))?;
-    let exe = std::env::current_exe().map_err(|e| format!("Programmpfad unbekannt: {e}"))?;
+        .ok_or_else(|| t!("Im Release v{a1} gibt es kein {a2}", a1 = r.version, a2 = asset_name()))?;
+    let exe = std::env::current_exe().map_err(|e| t!("Programmpfad unbekannt: {e}", e = e))?;
     let resp = agent()
         .get(url)
         .call()
-        .map_err(|e| format!("Download fehlgeschlagen: {e}"))?;
+        .map_err(|e| t!("Download fehlgeschlagen: {e}", e = e))?;
     let mut bytes = Vec::new();
     resp.into_reader()
         .take(300 * 1024 * 1024)
         .read_to_end(&mut bytes)
-        .map_err(|e| format!("Download abgebrochen: {e}"))?;
+        .map_err(|e| t!("Download abgebrochen: {e}", e = e))?;
     if !looks_like_program(&bytes) {
         return Err(
-            "Die heruntergeladene Datei ist kein gültiges Programm – Update abgebrochen".into(),
+            t!("Die heruntergeladene Datei ist kein gültiges Programm – Update abgebrochen").into(),
         );
     }
     replace(&exe, &bytes)?;
@@ -159,7 +159,7 @@ pub fn replace(exe: &Path, bytes: &[u8]) -> Result<(), String> {
     let new = new_path(exe);
     let old = old_path(exe);
     std::fs::write(&new, bytes)
-        .map_err(|e| format!("Neue Version nicht speicherbar ({}): {e}", new.display()))?;
+        .map_err(|e| t!("Neue Version nicht speicherbar ({a1}): {e}", a1 = new.display(), e = e))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -168,11 +168,11 @@ pub fn replace(exe: &Path, bytes: &[u8]) -> Result<(), String> {
     let _ = std::fs::remove_file(&old);
     std::fs::rename(exe, &old).map_err(|e| {
         let _ = std::fs::remove_file(&new);
-        format!("Programmdatei nicht austauschbar: {e}")
+        t!("Programmdatei nicht austauschbar: {e}", e = e)
     })?;
     if let Err(e) = std::fs::rename(&new, exe) {
         let _ = std::fs::rename(&old, exe);
-        return Err(format!("Neue Version nicht einsetzbar: {e}"));
+        return Err(t!("Neue Version nicht einsetzbar: {e}", e = e));
     }
     Ok(())
 }
@@ -192,7 +192,7 @@ pub fn spawn(exe: &Path) -> Result<(), String> {
         .args(args)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Neustart fehlgeschlagen: {e}"))
+        .map_err(|e| t!("Neustart fehlgeschlagen: {e}", e = e))
 }
 
 #[cfg(test)]

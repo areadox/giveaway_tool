@@ -46,6 +46,11 @@ Rätsel stehen als "Frage|richtige Antwort|falsch|falsch|falsch" in "riddles",
 Ereignisse als "art|Text" in "events" bzw. "traps".
 Man kann also auch nur ein paar Texte oder nur die Farben ändern.
 
+Englisch: Ist im Programm "English" eingestellt, liest es zusätzlich
+theme.en.json (gleicher Aufbau, nur die englischen Texte). Die Vorlage
+enthält eine; die englischen Abläufe liegen als _ablaeufe/<ablauf>.en.json
+daneben. Fehlt theme.en.json, erscheinen die Texte aus theme.json.
+
 Platzhalter in geschweiften Klammern werden beim Run ersetzt, z. B.
 {decker} (Name des Streamers), {host} (Ziel), {ice} (Gegner), {n} (Zahl),
 {os}/{max} (Alarmwert), {kw} (Schlüsselwort), {prize} (Preis).

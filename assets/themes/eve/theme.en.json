@@ -1,0 +1,26 @@
+{
+  "name": "EVE Online – Data Site",
+  "description": "Hack a data site like in the game: virus with coherence and strength, open nodes, crack firewalls and anti-viruses, system core, loot spew.",
+  "ui": {
+    "open_title": "Data site found",
+    "open_call": "Type {kw} in chat to join the fleet.",
+    "open_count": "pilots in fleet",
+    "open_until": "until warp",
+    "open_manual": "warp manually",
+    "prize": "Loot:",
+    "winner_one": "Loot secured – the winner is",
+    "winner_many": "Loot secured – {n} winners",
+    "more": "… and {n} more – full list in chat",
+    "conn_idle": "Overlay connected – waiting for the next site",
+    "demo": "Demo mode",
+    "t_wait": "Next site in",
+    "t_wait_prize": "Next site: {prize}",
+    "t_open": "Type {kw} · {prize}",
+    "t_open_noprize": "Type {kw} – fleet open",
+    "t_run": "Hacking the site",
+    "t_run_value": "HACK",
+    "t_winner": "Winner",
+    "t_winner_prize": "Winner · {prize}",
+    "t_manual": "Manual"
+  }
+}

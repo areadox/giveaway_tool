@@ -70,7 +70,7 @@ pub fn summary(prizes: &[Prize], text: &str) -> String {
     match labels.len() {
         0 => String::new(),
         1..=4 => labels.join(", "),
-        n => format!("{} und {} weitere Preise", labels[..3].join(", "), n - 3),
+        n => t!("{a1} und {a2} weitere Preise", a1 = labels[..3].join(", "), a2 = n - 3),
     }
 }
 

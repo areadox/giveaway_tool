@@ -66,7 +66,7 @@ impl EditState {
                 twitch_id: o(&u.twitch_id),
                 corp: o(&u.corp_ticker),
                 alliance: o(&u.alliance_ticker),
-                source: u.source.clone().unwrap_or_else(|| "manuell".into()),
+                source: u.source.clone().unwrap_or_else(|| t!("manuell")),
                 error: None,
             },
             None => Self {
@@ -77,7 +77,7 @@ impl EditState {
                 twitch_id: String::new(),
                 corp: String::new(),
                 alliance: String::new(),
-                source: "manuell".into(),
+                source: t!("manuell"),
                 error: None,
             },
         }
@@ -182,7 +182,7 @@ impl GuiApp {
                 Err(err) => {
                     if let Ok(mut e) = engine.lock() {
                         e.log(
-                            format!("Tray-Symbol nicht verfügbar: {err}"),
+                            t!("Tray-Symbol nicht verfügbar: {err}", err = err),
                             crate::engine::Tone::Yellow,
                         );
                     }
@@ -264,7 +264,8 @@ fn style(ctx: &egui::Context) {
     ctx.set_style(s);
 }
 
-fn big_button(ui: &mut egui::Ui, text: &str, color: Color32, width: f32) -> egui::Response {
+fn big_button(ui: &mut egui::Ui, text: impl AsRef<str>, color: Color32, width: f32) -> egui::Response {
+    let text = crate::i18n::tr(text.as_ref());
     ui.add_sized(
         [width, 36.0],
         egui::Button::new(RichText::new(text).color(color).strong().size(15.0))
@@ -290,11 +291,12 @@ impl eframe::App for GuiApp {
                         .inner_margin(8.0)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
+                                ui.label(RichText::new("// CYBER GIVEAWAY").color(GREEN).size(17.0).strong());
+                                // aktives Design (Matrix-Run, Data-Site, Schatzsuche …)
                                 ui.label(
-                                    RichText::new("// MATRIX-RUN :: GIVEAWAY")
-                                        .color(GREEN)
-                                        .size(17.0)
-                                        .strong(),
+                                    RichText::new(format!(":: {}", themes::registry().get(&e.cfg.theme).info.name))
+                                        .color(DIM)
+                                        .size(13.0),
                                 );
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
@@ -302,7 +304,7 @@ impl eframe::App for GuiApp {
                                         if ui
                                             .add(
                                                 egui::Button::new(
-                                                    RichText::new("⚙ EINSTELLUNGEN").color(MAGENTA),
+                                                    RichText::new(t!("⚙ EINSTELLUNGEN")).color(MAGENTA),
                                                 )
                                                 .stroke(Stroke::new(1.0_f32, MAGENTA)),
                                             )
@@ -317,11 +319,11 @@ impl eframe::App for GuiApp {
                     if let Some(r) = &e.update {
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(format!("▲ Neue Version v{} verfügbar", r.version)).color(YELLOW).strong());
+                            ui.label(RichText::new(t!("▲ Neue Version v{a1} verfügbar", a1 = r.version)).color(YELLOW).strong());
                             if r.asset.is_some()
                                 && ui
-                                    .add_enabled(!e.update_busy, egui::Button::new(RichText::new("JETZT AKTUALISIEREN").color(YELLOW)).stroke(Stroke::new(1.0_f32, YELLOW)))
-                                    .on_hover_text("Lädt die neue Version von GitHub, ersetzt das Programm und startet neu. Einstellungen und Datenbank bleiben erhalten.")
+                                    .add_enabled(!e.update_busy, egui::Button::new(RichText::new(t!("JETZT AKTUALISIEREN")).color(YELLOW)).stroke(Stroke::new(1.0_f32, YELLOW)))
+                                    .on_hover_text(t!("Lädt die neue Version von GitHub, ersetzt das Programm und startet neu. Einstellungen und Datenbank bleiben erhalten."))
                                     .clicked()
                             {
                                 do_update = true;
@@ -333,58 +335,55 @@ impl eframe::App for GuiApp {
                     }
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("KEYWORD").color(CYAN));
+                        ui.label(RichText::new(t!("KEYWORD")).color(CYAN));
                         ui.add(egui::TextEdit::singleline(&mut self.keyword).desired_width(110.0));
                         ui.add_space(10.0);
-                        ui.label(RichText::new("RUN (s)").color(CYAN));
+                        ui.label(RichText::new(t!("RUN (s)")).color(CYAN));
                         ui.add(egui::TextEdit::singleline(&mut self.hack).desired_width(50.0))
-                            .on_hover_text("Dauer des Matrix-Runs im Overlay (mind. 8 Sekunden)");
+                            .on_hover_text(t!("Dauer der Auslosung im Overlay (mind. 8 Sekunden)"));
                         ui.add_space(10.0);
-                        ui.label(RichText::new("GEWINNER").color(CYAN));
+                        ui.label(RichText::new(t!("GEWINNER")).color(CYAN));
                         let mut n = e.cfg.winners.max(1);
                         if ui
                             .add(egui::DragValue::new(&mut n).range(1..=100))
-                            .on_hover_text("Anzahl der Gewinner pro Giveaway")
+                            .on_hover_text(t!("Anzahl der Gewinner pro Giveaway"))
                             .changed()
                         {
                             new_winners = Some(n);
                         }
                     });
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("GIVEAWAY-DAUER").color(CYAN));
+                        ui.label(RichText::new(t!("GIVEAWAY-DAUER")).color(CYAN));
                         ui.add(egui::TextEdit::singleline(&mut self.duration).desired_width(70.0));
                         ui.label(
-                            RichText::new("Minuten oder mm:ss (0 = manuell)")
+                            RichText::new(t!("Minuten oder mm:ss (0 = manuell)"))
                                 .color(DIM)
                                 .size(11.0),
                         );
                     });
                     ui.add_space(4.0);
                     ui.label(
-                        RichText::new(format!("STATUS: {}", e.status)).color(tone(e.status_tone)),
+                        RichText::new(t!("STATUS: {s}", s = e.status)).color(tone(e.status_tone)),
                     );
                     ui.label(
-                        RichText::new(format!("COUNTDOWN: {}", e.countdown_text))
+                        RichText::new(t!("COUNTDOWN: {s}", s = e.countdown_text))
                             .color(tone(e.countdown_tone))
                             .size(16.0)
                             .strong(),
                     );
                     ui.label(
-                        RichText::new(format!("TEILNEHMER: {}", e.participants.len())).color(GREEN),
+                        RichText::new(t!("TEILNEHMER: {n}", n = e.participants.len())).color(GREEN),
                     );
                     let prize = e.prize_summary();
                     if !prize.is_empty() {
-                        ui.label(RichText::new(format!("PREIS: {prize}")).color(YELLOW));
+                        ui.label(RichText::new(t!("PREIS: {prize}", prize = prize)).color(YELLOW));
                     }
                     if let Some(t) = e.auto_text() {
-                        ui.label(RichText::new(format!("AUTO-GIVEAWAY: {t}")).color(CYAN));
+                        ui.label(RichText::new(t!("AUTO-GIVEAWAY: {t}", t = t)).color(CYAN));
                     }
                     if let Some(rv) = e.run_view.as_ref().filter(|_| e.phase == Phase::Running) {
                         ui.label(
-                            RichText::new(format!(
-                                "MATRIX: {} // OW {}/{} // Marken {}/3",
-                                rv.phase_text, rv.os, rv.os_max, rv.marks
-                            ))
+                            RichText::new(t!("MATRIX: {a1} // OW {a2}/{a3} // Marken {a4}/3", a1 = rv.phase_text, a2 = rv.os, a3 = rv.os_max, a4 = rv.marks))
                             .color(MAGENTA),
                         );
                     }
@@ -392,7 +391,7 @@ impl eframe::App for GuiApp {
                         && (ctx.input(|i| i.time) * 1000.0 / 450.0) as i64 % 2 == 0;
                     if e.winners.is_empty() {
                         ui.label(
-                            RichText::new("GEWINNER: —")
+                            RichText::new(t!("GEWINNER: —"))
                                 .color(YELLOW)
                                 .size(16.0)
                                 .strong(),
@@ -409,9 +408,9 @@ impl eframe::App for GuiApp {
                             }
                             ui.vertical(|ui| {
                                 let head = if many {
-                                    format!("GEWINNER {}", i + 1)
+                                    t!("GEWINNER {n}", n = i + 1)
                                 } else {
-                                    "GEWINNER".into()
+                                    t!("GEWINNER")
                                 };
                                 ui.label(
                                     RichText::new(format!("{head}: @{}", w.display.to_uppercase()))
@@ -429,14 +428,14 @@ impl eframe::App for GuiApp {
                                     .flatten()
                                     .collect::<Vec<_>>()
                                     .join(" ");
-                                    info.push(format!("EVE: {} {tick}", c.name).trim().to_string());
+                                    info.push(format!("EVE: {a1} {tick}", a1 = c.name, tick = tick).trim().to_string());
                                 }
                                 if let Some(c) = &w.ign {
                                     let sub = c.sub.as_ref().map(|s| format!(" ({s})")).unwrap_or_default();
                                     info.push(format!("{}: {}{sub}", c.label, c.name));
                                 }
                                 if let Some(p) = &w.prize {
-                                    info.push(format!("Preis: {}", p.label));
+                                    info.push(t!("Preis: {p}", p = p.label));
                                 }
                                 if !info.is_empty() {
                                     ui.label(RichText::new(info.join("  |  ")).color(CYAN));
@@ -446,10 +445,7 @@ impl eframe::App for GuiApp {
                     }
                     if e.winners.len() > 5 {
                         ui.label(
-                            RichText::new(format!(
-                                "… und {} weitere (siehe Protokoll und Verlauf)",
-                                e.winners.len() - 5
-                            ))
+                            RichText::new(t!("… und {a1} weitere (siehe Protokoll und Verlauf)", a1 = e.winners.len() - 5))
                             .color(DIM),
                         );
                     }
@@ -460,15 +456,15 @@ impl eframe::App for GuiApp {
                     ui.horizontal(|ui| {
                         let w = ((ui.available_width() - 16.0) / 3.0).max(80.0);
                         let (label, color) = if e.phase == Phase::Open {
-                            ("STOP & AUSLOSEN", RED)
+                            (t!("STOP & AUSLOSEN"), RED)
                         } else {
-                            ("START", GREEN)
+                            (t!("START"), GREEN)
                         };
                         if big_button(ui, label, color, w).clicked() {
                             action = Some("toggle");
                         }
                         if big_button(ui, "BREACH", RED, w)
-                            .on_hover_text("Matrix-Run sofort starten")
+                            .on_hover_text(t!("Auslosung sofort starten"))
                             .clicked()
                         {
                             action = Some("breach");
@@ -479,7 +475,7 @@ impl eframe::App for GuiApp {
                     });
                     ui.add_space(2.0);
                     if e.overlay_url.is_empty() {
-                        ui.label(RichText::new("Overlay nicht aktiv").color(RED).size(11.0));
+                        ui.label(RichText::new(t!("Overlay nicht aktiv")).color(RED).size(11.0));
                     } else {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(RichText::new("OBS:").color(CYAN).size(11.0));
@@ -494,13 +490,13 @@ impl eframe::App for GuiApp {
                             let timer = format!("{}/timer", e.overlay_url);
                             ui.hyperlink_to(RichText::new(&timer).size(11.0), &timer)
                                 .on_hover_text(
-                                "Kleine Anzeige für OBS (z. B. 520 × 110); Vorschau mit ?demo=1",
+                                t!("Kleine Anzeige für OBS (z. B. 520 × 110); Vorschau mit ?demo=1"),
                             );
                             ui.label(RichText::new("| DOCK:").color(CYAN).size(11.0));
                             let dock = format!("{}/dock", e.overlay_url);
                             ui.hyperlink_to(RichText::new(&dock).size(11.0), &dock)
                                 .on_hover_text(
-                                    "Bedien-Dock für OBS: Docks → Benutzerdefinierte Browser-Docks",
+                                    t!("Bedien-Dock für OBS: Docks → Benutzerdefinierte Browser-Docks"),
                                 );
                         });
                     }
@@ -518,7 +514,7 @@ impl eframe::App for GuiApp {
                         .stroke(Stroke::new(1.0_f32, Color32::from_rgb(8, 124, 44)))
                         .inner_margin(6.0)
                         .show(ui, |ui| {
-                            ui.label(RichText::new("TERMINAL // SYSTEM-LOG").color(CYAN));
+                            ui.label(RichText::new(t!("TERMINAL // SYSTEM-LOG")).color(CYAN));
                             egui::ScrollArea::vertical()
                                 .stick_to_bottom(true)
                                 .auto_shrink([false, false])
@@ -541,7 +537,7 @@ impl eframe::App for GuiApp {
         if do_update {
             let mut e = self.engine.lock().expect("engine");
             if let Err(err) = e.install_update() {
-                e.log(format!("Update nicht möglich: {err}"), Tone::Yellow);
+                e.log(t!("Update nicht möglich: {err}", err = err), Tone::Yellow);
             }
         }
         match action {
@@ -627,7 +623,7 @@ impl GuiApp {
         ctx.show_viewport_immediate(
             egui::ViewportId::from_hash_of("settings"),
             egui::ViewportBuilder::default()
-                .with_title("MATRIX-RUN // EINSTELLUNGEN")
+                .with_title(t!("CYBER GIVEAWAY // EINSTELLUNGEN"))
                 .with_inner_size([820.0, 640.0])
                 .with_min_inner_size([680.0, 520.0]),
             |ctx, _class| {
@@ -648,12 +644,12 @@ impl GuiApp {
                     .show(ctx, |ui| {
                         ui.horizontal(|ui| {
                             for (t, label) in [
-                                (Tab::General, "Einstellungen"),
-                                (Tab::Messages, "Chat & Spiele"),
-                                (Tab::Prizes, "Preise"),
-                                (Tab::Database, "Datenbank"),
-                                (Tab::Games, "Spielnamen"),
-                                (Tab::History, "Verlauf"),
+                                (Tab::General, t!("Einstellungen")),
+                                (Tab::Messages, t!("Chat & Spiele")),
+                                (Tab::Prizes, t!("Preise")),
+                                (Tab::Database, t!("Datenbank")),
+                                (Tab::Games, t!("Spielnamen")),
+                                (Tab::History, t!("Verlauf")),
                             ] {
                                 if ui
                                     .selectable_label(
@@ -685,7 +681,7 @@ impl GuiApp {
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
-                                        if big_button(ui, "Speichern & übernehmen", GREEN, 240.0)
+                                        if big_button(ui, &t!("Speichern & übernehmen"), GREEN, 240.0)
                                             .clicked()
                                         {
                                             let mut cfg = st.draft.clone();
@@ -740,15 +736,15 @@ impl GuiApp {
                                                     }
                                                 }
                                                 (Ok(p), _) if !(1..=65535).contains(&p) => {
-                                                    st.error = Some("Port muss 1–65535 sein".into())
+                                                    st.error = Some(t!("Port muss 1–65535 sein").into())
                                                 }
                                                 (Err(_), _) => {
                                                     st.error =
-                                                        Some("Port muss eine Zahl sein".into())
+                                                        Some(t!("Port muss eine Zahl sein").into())
                                                 }
                                                 _ => {
                                                     st.error =
-                                                        Some("Run-Dauer: Zahl ab 8 Sekunden".into())
+                                                        Some(t!("Run-Dauer: Zahl ab 8 Sekunden").into())
                                                 }
                                             }
                                         }
@@ -771,9 +767,9 @@ impl GuiApp {
                     let mut done = false;
                     let mut keep = true;
                     egui::Window::new(if edit.original.is_some() {
-                        "Zuordnung bearbeiten"
+                        t!("Zuordnung bearbeiten")
                     } else {
-                        "Zuordnung hinzufügen"
+                        t!("Zuordnung hinzufügen")
                     })
                     .collapsible(false)
                     .resizable(false)
@@ -788,13 +784,13 @@ impl GuiApp {
                             .spacing([10.0, 8.0])
                             .show(ui, |ui| {
                                 for (label, v) in [
-                                    ("Twitch-Login", &mut edit.login),
-                                    ("EVE-Charaktername", &mut edit.eve_name),
-                                    ("EVE-Charakter-ID", &mut edit.eve_id),
-                                    ("Twitch-ID", &mut edit.twitch_id),
-                                    ("Corp-Ticker", &mut edit.corp),
-                                    ("Allianz-Ticker", &mut edit.alliance),
-                                    ("Quelle", &mut edit.source),
+                                    (t!("Twitch-Login"), &mut edit.login),
+                                    (t!("EVE-Charaktername"), &mut edit.eve_name),
+                                    (t!("EVE-Charakter-ID"), &mut edit.eve_id),
+                                    (t!("Twitch-ID"), &mut edit.twitch_id),
+                                    (t!("Corp-Ticker"), &mut edit.corp),
+                                    (t!("Allianz-Ticker"), &mut edit.alliance),
+                                    (t!("Quelle"), &mut edit.source),
                                 ] {
                                     ui.label(RichText::new(label).color(CYAN));
                                     ui.add(egui::TextEdit::singleline(v).desired_width(260.0));
@@ -804,7 +800,7 @@ impl GuiApp {
                         if let Some(err) = &edit.error {
                             ui.label(RichText::new(err).color(RED));
                         }
-                        if ui.button(RichText::new("Speichern").color(GREEN)).clicked() {
+                        if ui.button(RichText::new(t!("Speichern")).color(GREEN)).clicked() {
                             let id = edit.eve_id.trim();
                             let id = if id.is_empty() {
                                 Ok(None)
@@ -813,7 +809,7 @@ impl GuiApp {
                             };
                             match id {
                                 Err(_) => {
-                                    edit.error = Some("EVE-Charakter-ID muss eine Zahl sein".into())
+                                    edit.error = Some(t!("EVE-Charakter-ID muss eine Zahl sein").into())
                                 }
                                 Ok(id) => {
                                     let mut e = engine.lock().expect("engine");
@@ -878,7 +874,8 @@ impl GuiApp {
     }
 }
 
-fn field(ui: &mut egui::Ui, label: &str, value: &mut String, password: bool, hint: &str) {
+fn field(ui: &mut egui::Ui, label: impl AsRef<str>, value: &mut String, password: bool, hint: impl AsRef<str>) {
+    let (label, hint) = (crate::i18n::tr(label.as_ref()), crate::i18n::tr(hint.as_ref()));
     ui.label(RichText::new(label).color(CYAN));
     let r = ui.add(
         egui::TextEdit::singleline(value)
@@ -895,8 +892,8 @@ fn field(ui: &mut egui::Ui, label: &str, value: &mut String, password: bool, hin
 fn theme_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
     let reg = themes::registry();
     let list = reg.list();
-    ui.label(RichText::new("Design").color(CYAN))
-        .on_hover_text("Look und Begriffe von Overlay und Timer-Anzeige");
+    ui.label(RichText::new(t!("Design")).color(CYAN))
+        .on_hover_text(t!("Look und Begriffe von Overlay und Timer-Anzeige"));
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             let current = reg.get(&st.draft.theme);
@@ -908,15 +905,15 @@ fn theme_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) 
                         let label = if *builtin {
                             name.clone()
                         } else {
-                            format!("{name}  (eigenes)")
+                            format!("{name}  (eigenes)", name = name)
                         };
                         ui.selectable_value(&mut st.draft.theme, id.clone(), label);
                     }
                 });
             let port = st.port.trim().parse::<u16>().unwrap_or(8766);
             if ui
-                .button("Vorschau")
-                .on_hover_text("Demo-Run in diesem Design im Browser öffnen")
+                .button(t!("Vorschau"))
+                .on_hover_text(t!("Demo-Run in diesem Design im Browser öffnen"))
                 .clicked()
             {
                 let id = reg.get(&st.draft.theme).info.id.clone();
@@ -929,8 +926,8 @@ fn theme_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) 
         }
         ui.horizontal(|ui| {
             if ui
-                .small_button("Designs neu laden")
-                .on_hover_text("Eigene Designs aus dem Ordner „themes“ neu einlesen")
+                .small_button(t!("Designs neu laden"))
+                .on_hover_text(t!("Eigene Designs aus dem Ordner „themes“ neu einlesen"))
                 .clicked()
             {
                 if let Ok(mut e) = engine.lock() {
@@ -940,7 +937,7 @@ fn theme_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) 
             if let Some(dir) = reg.dir() {
                 let dir = dir.to_path_buf();
                 if ui
-                    .small_button("Ordner für eigene Designs")
+                    .small_button(t!("Ordner für eigene Designs"))
                     .on_hover_text(dir.display().to_string())
                     .clicked()
                 {
@@ -957,47 +954,57 @@ fn general_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>
     egui::ScrollArea::vertical().show(ui, |ui| {
         egui::Grid::new("general").num_columns(2).spacing([14.0, 10.0]).min_col_width(220.0).show(ui, |ui| {
             let d = &mut st.draft;
-            field(ui, "Twitch-Channel", &mut d.channel, false, "Kanal, dessen Chat gelesen wird");
-            field(ui, "Bot-Username", &mut d.bot_username, false, "Account, der Chatnachrichten sendet");
-            ui.label(RichText::new("OAuth-Token").color(CYAN));
+            ui.label(RichText::new("Sprache / Language").color(CYAN));
+            egui::ComboBox::from_id_salt("language")
+                .selected_text(if d.language == "en" { "English" } else { "Deutsch" })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut d.language, "de".to_string(), "Deutsch");
+                    ui.selectable_value(&mut d.language, "en".to_string(), "English");
+                })
+                .response
+                .on_hover_text("Programm, Dock, Overlay, Timer und Chat / program, dock, overlay, timer and chat");
+            ui.end_row();
+            field(ui, "Twitch-Channel", &mut d.channel, false, &t!("Kanal, dessen Chat gelesen wird"));
+            field(ui, "Bot-Username", &mut d.bot_username, false, &t!("Account, der Chatnachrichten sendet"));
+            ui.label(RichText::new(t!("OAuth-Token")).color(CYAN));
             ui.horizontal(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut d.oauth_token).password(!st.show_token).desired_width(ui.available_width() - 90.0));
-                ui.checkbox(&mut st.show_token, "zeigen");
+                ui.checkbox(&mut st.show_token, t!("zeigen"));
             });
             ui.end_row();
             field(ui, "Teilnahme-Keyword", &mut d.keyword, false, "z. B. !hack");
-            field(ui, "Webserver-Port", &mut st.port, false, "Port für das OBS-Overlay (Fallback: die nächsten 9 Ports)");
-            field(ui, "Giveaway-Dauer (mm:ss oder Minuten)", &mut d.timer_duration, false, "0 = manuelles Ende");
-            field(ui, "Matrix-Run-Dauer (Sekunden)", &mut st.hack, false, "Wie lange der simulierte Run im Overlay dauert (mind. 8)");
-            field(ui, "Decker-Name im Overlay", &mut d.decker_name, false, "Leer = Twitch-Channel");
-            ui.label(RichText::new("Sound").color(CYAN));
-            ui.checkbox(&mut d.sound, "Soundeffekte im Programm");
+            field(ui, "Webserver-Port", &mut st.port, false, &t!("Port für das OBS-Overlay (Fallback: die nächsten 9 Ports)"));
+            field(ui, t!("Giveaway-Dauer (mm:ss oder Minuten)"), &mut d.timer_duration, false, t!("0 = manuelles Ende"));
+            field(ui, t!("Dauer der Auslosung (Sekunden)"), &mut st.hack, false, t!("Wie lange der simulierte Run im Overlay dauert (mind. 8)"));
+            field(ui, t!("Decker-Name im Overlay"), &mut d.decker_name, false, t!("Leer = Twitch-Channel"));
+            ui.label(RichText::new(t!("Sound")).color(CYAN));
+            ui.checkbox(&mut d.sound, t!("Soundeffekte im Programm"));
             ui.end_row();
-            ui.label(RichText::new("Overlay").color(CYAN));
-            ui.checkbox(&mut d.overlay_show_open, "große Teilnahme-Anzeige zeigen")
-                .on_hover_text("„Host-Zugang offen“ mit Countdown und Teilnehmern. Aus, wenn du die kleine Timer-Anzeige (/timer) nutzt – Matrix-Run und Gewinner erscheinen weiterhin.");
+            ui.label(RichText::new(t!("Overlay")).color(CYAN));
+            ui.checkbox(&mut d.overlay_show_open, t!("große Teilnahme-Anzeige zeigen"))
+                .on_hover_text(t!("„Host-Zugang offen“ mit Countdown und Teilnehmern. Aus, wenn du die kleine Timer-Anzeige (/timer) nutzt – Auslosung und Gewinner erscheinen weiterhin."));
             ui.end_row();
             theme_row(ui, st, engine);
             update_row(ui, st, engine);
             let d = &mut st.draft;
-            ui.label(RichText::new("Programmstart").color(CYAN));
-            ui.checkbox(&mut d.start_in_tray, "nur im Tray starten (Linux: minimiert)");
+            ui.label(RichText::new(t!("Programmstart")).color(CYAN));
+            ui.checkbox(&mut d.start_in_tray, t!("nur im Tray starten (Linux: minimiert)"));
             ui.end_row();
-            ui.label(RichText::new("Fenster schließen").color(CYAN));
-            ui.checkbox(&mut d.close_to_tray, "X schließt in den Tray (Windows) – Beenden über das Tray-Menü");
+            ui.label(RichText::new(t!("Fenster schließen")).color(CYAN));
+            ui.checkbox(&mut d.close_to_tray, t!("X schließt in den Tray (Windows) – Beenden über das Tray-Menü"));
             ui.end_row();
-            ui.label(RichText::new("Auto-Giveaway").color(CYAN));
-            ui.checkbox(&mut d.auto_enabled, "an – öffnet Giveaways selbst und beginnt danach von vorn");
+            ui.label(RichText::new(t!("Auto-Giveaway")).color(CYAN));
+            ui.checkbox(&mut d.auto_enabled, t!("an – öffnet Giveaways selbst und beginnt danach von vorn"));
             ui.end_row();
-            field(ui, "Pause bis zum nächsten Giveaway", &mut d.auto_interval, false, "mm:ss oder Minuten, z. B. 30:00");
-            ui.label(RichText::new("Gewinner-Anzeige im Auto-Modus").color(CYAN));
+            field(ui, t!("Pause bis zum nächsten Giveaway"), &mut d.auto_interval, false, t!("mm:ss oder Minuten, z. B. 30:00"));
+            ui.label(RichText::new(t!("Gewinner-Anzeige im Auto-Modus")).color(CYAN));
             ui.add(egui::DragValue::new(&mut d.auto_winner_hold).range(3.0..=3600.0).speed(1.0).suffix(" s"));
             ui.end_row();
         });
         ui.add_space(6.0);
-        ui.label(RichText::new("Im Auto-Modus gilt die Giveaway-Dauer von oben (muss größer als 0 sein). Die Timer-Anzeige für OBS liegt unter /timer.").color(DIM).size(11.0));
+        ui.label(RichText::new(t!("Im Auto-Modus gilt die Giveaway-Dauer von oben (muss größer als 0 sein). Die Timer-Anzeige für OBS liegt unter /timer.")).color(DIM).size(11.0));
         ui.add_space(10.0);
-        ui.label(RichText::new("Das OAuth-Token wird im Klartext in config.json neben der .exe gespeichert – die Datei nicht weitergeben.").color(DIM).size(11.0));
+        ui.label(RichText::new(t!("Das OAuth-Token wird im Klartext in config.json neben der .exe gespeichert – die Datei nicht weitergeben.")).color(DIM).size(11.0));
     });
 }
 
@@ -1011,48 +1018,39 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
                 let d = &mut st.draft;
                 field(
                     ui,
-                    "Chattext bei Start",
+                    &t!("Chattext bei Start"),
                     &mut d.open_message,
                     false,
-                    "Platzhalter {keyword}",
+                    t!("Platzhalter {keyword}"),
                 );
-                field(ui, "Chattext bei Ende", &mut d.close_message, false, "");
+                field(ui, &t!("Chattext bei Ende"), &mut d.close_message, false, "");
                 field(
                     ui,
-                    "Chattext Gewinner",
+                    &t!("Chattext Gewinner"),
                     &mut d.win_message,
                     false,
-                    "Platzhalter {winner}",
+                    t!("Platzhalter {winner}"),
                 );
-                ui.label(RichText::new("EVE-Modus").color(CYAN));
-                ui.checkbox(&mut d.eve_enabled, "aktiv");
+                ui.label(RichText::new(t!("EVE-Modus")).color(CYAN));
+                ui.checkbox(&mut d.eve_enabled, t!("aktiv"));
                 ui.end_row();
-                ui.label(RichText::new("EVE-Namen im Overlay").color(CYAN));
-                ui.checkbox(&mut d.hide_eve_names, "verbergen (kein Porträt, Name als [EVE-NAME])");
+                ui.label(RichText::new(t!("EVE-Namen im Overlay")).color(CYAN));
+                ui.checkbox(&mut d.hide_eve_names, t!("verbergen (kein Porträt, Name als [EVE-NAME])"));
                 ui.end_row();
                 field(
                     ui,
                     "EVE-Befehl",
                     &mut d.eve_command,
                     false,
-                    "z. B. !eve – Zuschauer schreiben „!eve Charaktername“",
-                );
-                field(ui, "eve2twitch API-URL", &mut d.eve_api_url, false, "");
-                field(ui, "eve2twitch API-Key", &mut d.eve_api_key, true, "");
-                field(
-                    ui,
-                    "Eve2Twitch-Bot-Nick (leer = alle)",
-                    &mut d.eve2twitch_bot_name,
-                    false,
-                    "",
+                    &t!("z. B. !eve – Zuschauer schreiben „!eve Charaktername“"),
                 );
             });
         ui.add_space(14.0);
-        ui.label(RichText::new("SPIELNAMEN ANDERER SPIELE").color(GREEN).strong());
+        ui.label(RichText::new(t!("SPIELNAMEN ANDERER SPIELE")).color(GREEN).strong());
         ui.label(
             RichText::new(
-                "Je Zeile: Kennung  Befehl  Bezeichnung – z. B. „wow !wow WoW-Charakter“. Zuschauer schreiben „!palia Name“. \
-                 Welcher Name beim Gewinner erscheint, legt das Design fest (EVE, WoW-Stil → wow, Palia-Stil → palia).",
+                t!("Je Zeile: Kennung  Befehl  Bezeichnung – z. B. „wow !wow WoW-Charakter“. Zuschauer schreiben „!palia Name“. \
+                 Welcher Name beim Gewinner erscheint, legt das Design fest (EVE, WoW-Stil → wow, Palia-Stil → palia)."),
             )
             .color(DIM)
             .size(11.0),
@@ -1065,9 +1063,9 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
             .min_col_width(220.0)
             .show(ui, |ui| {
                 let d = &mut st.draft;
-                field(ui, "WoW: Blizzard Client-ID", &mut d.wow_client_id, false, "develop.battle.net → API Access → Client anlegen");
-                field(ui, "WoW: Blizzard Client-Secret", &mut d.wow_client_secret, true, "Wird nur hier gespeichert und nie im Dock angezeigt");
-                ui.label(RichText::new("WoW: Region").color(CYAN));
+                field(ui, t!("WoW: Blizzard Client-ID"), &mut d.wow_client_id, false, t!("develop.battle.net → API Access → Client anlegen"));
+                field(ui, t!("WoW: Blizzard Client-Secret"), &mut d.wow_client_secret, true, t!("Wird nur hier gespeichert und nie im Dock angezeigt"));
+                ui.label(RichText::new(t!("WoW: Region")).color(CYAN));
                 egui::ComboBox::from_id_salt("wowregion")
                     .selected_text(d.wow_region.to_uppercase())
                     .show_ui(ui, |ui| {
@@ -1076,11 +1074,11 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
                         }
                     });
                 ui.end_row();
-                field(ui, "WoW: Standard-Realm", &mut d.wow_realm, false, "Wenn im Chat nur „!wow Name“ steht");
+                field(ui, t!("WoW: Standard-Realm"), &mut d.wow_realm, false, t!("Wenn im Chat nur „!wow Name“ steht"));
             });
         ui.label(
             RichText::new(
-                "Mit Blizzard-Zugang prüft „!wow Name-Realm“ den Charakter und zeigt Bild, Klasse, Stufe und Gilde. Ohne Zugang wird der Name ungeprüft gespeichert.",
+                t!("Mit Blizzard-Zugang prüft „!wow Name-Realm“ den Charakter und zeigt Bild, Klasse, Stufe und Gilde. Ohne Zugang wird der Name ungeprüft gespeichert."),
             )
             .color(DIM)
             .size(11.0),
@@ -1088,7 +1086,7 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
         ui.add_space(10.0);
         ui.label(
             RichText::new(
-                "Gewinnt ein registrierter Spieler, zeigt das Overlay sein EVE-Porträt mit Name und Tickern.",
+                t!("Gewinnt ein registrierter Spieler, zeigt das Overlay sein EVE-Porträt mit Name und Tickern."),
             )
             .color(DIM)
             .size(11.0),
@@ -1098,14 +1096,11 @@ fn messages_tab(ui: &mut egui::Ui, st: &mut Settings) {
 
 fn games_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
     ui.horizontal(|ui| {
-        if ui.button("Aktualisieren").clicked() {
+        if ui.button(t!("Aktualisieren")).clicked() {
             st.game_rows = engine.lock().expect("engine").db.list_game_names();
         }
         ui.label(
-            RichText::new(format!(
-                "{} Spielnamen (EVE-Zuordnungen stehen unter Datenbank)",
-                st.game_rows.len()
-            ))
+            RichText::new(t!("{a1} Spielnamen (EVE-Zuordnungen stehen unter Datenbank)", a1 = st.game_rows.len()))
             .color(DIM),
         );
     });
@@ -1117,7 +1112,7 @@ fn games_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) 
             .num_columns(5)
             .spacing([16.0, 6.0])
             .show(ui, |ui| {
-                for h in ["Twitch", "Spiel", "Name", "Info", ""] {
+                for h in [t!("Twitch"), t!("Spiel"), t!("Name"), t!("Info"), String::new()] {
                     ui.label(RichText::new(h).color(CYAN).strong());
                 }
                 ui.end_row();
@@ -1132,7 +1127,7 @@ fn games_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) 
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
                     ui.label(RichText::new(sum).color(DIM));
-                    if ui.small_button("Löschen").clicked() {
+                    if ui.small_button(t!("Löschen")).clicked() {
                         delete = Some((g.twitch_login.clone(), g.game.clone()));
                     }
                     ui.end_row();
@@ -1149,11 +1144,11 @@ fn games_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) 
 
 /// Update-Zeile in den Einstellungen.
 fn update_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
-    ui.label(RichText::new("Updates").color(CYAN));
+    ui.label(RichText::new(t!("Updates")).color(CYAN));
     ui.vertical(|ui| {
         ui.checkbox(
             &mut st.draft.update_check,
-            "beim Start nach neuer Version suchen",
+            t!("beim Start nach neuer Version suchen"),
         );
         let (status, has, busy) = {
             let e = engine.lock().expect("engine");
@@ -1166,7 +1161,7 @@ fn update_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
         ui.horizontal(|ui| {
             ui.label(RichText::new(format!("v{}", crate::update::VERSION)).color(DIM));
             if ui
-                .add_enabled(!busy, egui::Button::new("Jetzt prüfen"))
+                .add_enabled(!busy, egui::Button::new(t!("Jetzt prüfen")))
                 .clicked()
             {
                 engine.lock().expect("engine").check_update(true);
@@ -1176,7 +1171,7 @@ fn update_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
                     .add_enabled(
                         !busy,
                         egui::Button::new(
-                            RichText::new(format!("Auf v{v} aktualisieren")).color(GREEN),
+                            RichText::new(t!("Auf v{v} aktualisieren", v = v)).color(GREEN),
                         ),
                     )
                     .clicked()
@@ -1197,23 +1192,23 @@ fn update_row(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
 
 fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>) {
     ui.horizontal(|ui| {
-        if ui.button("Hinzufügen").clicked() {
+        if ui.button(t!("Hinzufügen")).clicked() {
             st.edit = Some(EditState::from_user(None));
         }
         let sel = st.selected.and_then(|i| st.rows.get(i)).cloned();
         if ui
-            .add_enabled(sel.is_some(), egui::Button::new("Bearbeiten"))
+            .add_enabled(sel.is_some(), egui::Button::new(t!("Bearbeiten")))
             .clicked()
         {
             st.edit = Some(EditState::from_user(sel.as_ref()));
         }
         if ui
-            .add_enabled(sel.is_some(), egui::Button::new("Löschen"))
+            .add_enabled(sel.is_some(), egui::Button::new(t!("Löschen")))
             .clicked()
         {
             st.confirm_delete = true;
         }
-        if ui.button("CSV exportieren").clicked() {
+        if ui.button(t!("CSV exportieren")).clicked() {
             // Dialog ohne gehaltene Engine-Sperre öffnen
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("CSV", &["csv"])
@@ -1222,27 +1217,27 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
             {
                 let db = engine.lock().expect("engine").db.clone();
                 st.info = Some(match db.export_csv(&path) {
-                    Ok(()) => format!("Zuordnungen exportiert: {}", path.display()),
-                    Err(e) => format!("Export fehlgeschlagen: {e}"),
+                    Ok(()) => t!("Zuordnungen exportiert: {a1}", a1 = path.display()),
+                    Err(e) => t!("Export fehlgeschlagen: {e}", e = e),
                 });
             }
         }
-        if ui.button("Aktualisieren").clicked() {
+        if ui.button(t!("Aktualisieren")).clicked() {
             st.rows = engine.lock().expect("engine").db.list_users();
             st.selected = None;
         }
         if ui
-            .button("Fehlende IDs ergänzen")
+            .button(t!("Fehlende IDs ergänzen"))
             .on_hover_text(
-                "Charakter-ID, Corp und Allianz über ESI nachschlagen – nötig für das Porträt",
+                t!("Charakter-ID, Corp und Allianz über ESI nachschlagen – nötig für das Porträt"),
             )
             .clicked()
         {
             let n = engine.lock().expect("engine").resolve_missing_ids();
             st.info = Some(if n == 0 {
-                "Alle Zuordnungen haben bereits eine Charakter-ID.".into()
+                t!("Alle Zuordnungen haben bereits eine Charakter-ID.").into()
             } else {
-                format!("Suche läuft für {n} Zuordnung(en) – die Tabelle aktualisiert sich selbst.")
+                t!("Suche läuft für {n} Zuordnung(en) – die Tabelle aktualisiert sich selbst.", n = n)
             });
         }
     });
@@ -1250,16 +1245,16 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
         if let Some(u) = st.selected.and_then(|i| st.rows.get(i)).cloned() {
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new(format!("Zuordnung @{} löschen?", u.twitch_login)).color(YELLOW),
+                    RichText::new(t!("Zuordnung @{a1} löschen?", a1 = u.twitch_login)).color(YELLOW),
                 );
-                if ui.button(RichText::new("Ja, löschen").color(RED)).clicked() {
+                if ui.button(RichText::new(t!("Ja, löschen")).color(RED)).clicked() {
                     let mut e = engine.lock().expect("engine");
                     let _ = e.db.delete_user(&u.twitch_login);
                     e.refresh_igns();
                     st.confirm_delete = false;
                     st.selected = None;
                 }
-                if ui.button("Abbrechen").clicked() {
+                if ui.button(t!("Abbrechen")).clicked() {
                     st.confirm_delete = false;
                 }
             });
@@ -1284,12 +1279,12 @@ fn database_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>
         .column(egui_extras::Column::remainder())
         .header(22.0, |mut h| {
             for t in [
-                "",
-                "Twitch",
-                "EVE-Charakter",
-                "EVE-ID",
-                "Corp / Allianz",
-                "Quelle",
+                String::new(),
+                t!("Twitch"),
+                t!("EVE-Charakter"),
+                "EVE-ID".to_string(),
+                t!("Corp / Allianz"),
+                t!("Quelle"),
             ] {
                 h.col(|ui| {
                     ui.label(RichText::new(t).color(CYAN).strong());
@@ -1365,7 +1360,7 @@ fn portrait(ui: &mut egui::Ui, id: i64, px: f32) {
 
 fn history_tab(ui: &mut egui::Ui, st: &mut Settings) {
     if st.history.is_empty() {
-        ui.label(RichText::new("Noch keine Giveaways gespielt.").color(DIM));
+        ui.label(RichText::new(t!("Noch keine Giveaways gespielt.")).color(DIM));
         return;
     }
     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -1374,7 +1369,7 @@ fn history_tab(ui: &mut egui::Ui, st: &mut Settings) {
             .num_columns(4)
             .spacing([20.0, 6.0])
             .show(ui, |ui| {
-                for t in ["Zeitpunkt", "Gewinner", "Preis", "Teilnehmer"] {
+                for t in [t!("Zeitpunkt"), t!("Gewinner"), t!("Preis"), t!("Teilnehmer")] {
                     ui.label(RichText::new(t).color(CYAN).strong());
                 }
                 ui.end_row();
@@ -1419,7 +1414,7 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
         .num_columns(2)
         .spacing([14.0, 8.0])
         .show(ui, |ui| {
-            ui.label(RichText::new("Anzahl Gewinner").color(CYAN));
+            ui.label(RichText::new(t!("Anzahl Gewinner")).color(CYAN));
             let mut n = winners;
             if ui
                 .add(egui::DragValue::new(&mut n).range(1..=100))
@@ -1428,10 +1423,10 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
                 engine.lock().expect("engine").set_winners(n);
             }
             ui.end_row();
-            ui.label(RichText::new("Was gibt es zu gewinnen?").color(CYAN));
+            ui.label(RichText::new(t!("Was gibt es zu gewinnen?")).color(CYAN));
             let r = ui.add(
                 egui::TextEdit::singleline(&mut st.prize_text)
-                    .hint_text("leer = aus der Preisliste, z. B. „je 100 Mio. ISK“")
+                    .hint_text(t!("leer = aus der Preisliste, z. B. „je 100 Mio. ISK“"))
                     .desired_width(f32::INFINITY),
             );
             if r.lost_focus() || (r.changed() && st.prize_text.is_empty()) {
@@ -1441,18 +1436,14 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
         });
     ui.label(
         RichText::new(
-            "Mit Preisliste bekommt Gewinner 1 den ersten Preis, Gewinner 2 den zweiten usw. Ohne Liste gilt die Beschreibung für alle Gewinner.",
+            t!("Mit Preisliste bekommt Gewinner 1 den ersten Preis, Gewinner 2 den zweiten usw. Ohne Liste gilt die Beschreibung für alle Gewinner."),
         )
         .color(DIM)
         .size(11.0),
     );
     if !st.prizes.is_empty() && st.prizes.len() != winners as usize {
         ui.label(
-            RichText::new(format!(
-                "Hinweis: {} Preise, aber {} Gewinner eingestellt.",
-                st.prizes.len(),
-                winners
-            ))
+            RichText::new(t!("Hinweis: {a1} Preise, aber {a2} Gewinner eingestellt.", a1 = st.prizes.len(), a2 = winners))
             .color(YELLOW)
             .size(12.0),
         );
@@ -1460,12 +1451,12 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
     ui.add_space(6.0);
 
     // ---------------------------------------------------------- Preisliste
-    ui.label(RichText::new("Preisliste").color(GREEN).strong());
+    ui.label(RichText::new(t!("Preisliste")).color(GREEN).strong());
     let mut remove = None;
     let mut swap = None;
     egui::ScrollArea::vertical().id_salt("prizelist").max_height(170.0).show(ui, |ui| {
         if st.prizes.is_empty() {
-            ui.label(RichText::new("Noch keine Preise – unten aus den EVE-Assets wählen oder eigenen Preis eintragen.").color(DIM));
+            ui.label(RichText::new(t!("Noch keine Preise – unten aus den EVE-Assets wählen oder eigenen Preis eintragen.")).color(DIM));
         }
         let len = st.prizes.len();
         for (i, p) in st.prizes.iter_mut().enumerate() {
@@ -1485,19 +1476,19 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
                     changed = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("Entfernen").clicked() {
+                    if ui.small_button(t!("Entfernen")).clicked() {
                         remove = Some(i);
                     }
                     if ui
                         .add_enabled(i + 1 < len, egui::Button::new("▼").small())
-                        .on_hover_text("Nach unten (späterer Gewinner)")
+                        .on_hover_text(t!("Nach unten (späterer Gewinner)"))
                         .clicked()
                     {
                         swap = Some((i, i + 1));
                     }
                     if ui
                         .add_enabled(i > 0, egui::Button::new("▲").small())
-                        .on_hover_text("Nach oben (früherer Gewinner)")
+                        .on_hover_text(t!("Nach oben (früherer Gewinner)"))
                         .clicked()
                     {
                         swap = Some((i - 1, i));
@@ -1520,7 +1511,7 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
         changed = true;
     }
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Eigener Preis").color(CYAN));
+        ui.label(RichText::new(t!("Eigener Preis")).color(CYAN));
         ui.add(
             egui::DragValue::new(&mut st.manual_qty)
                 .range(1..=u64::MAX)
@@ -1528,13 +1519,13 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
         );
         ui.add(
             egui::TextEdit::singleline(&mut st.manual_name)
-                .hint_text("z. B. 500 Mio. ISK")
+                .hint_text(t!("z. B. 500 Mio. ISK"))
                 .desired_width(220.0),
         );
         if ui
             .add_enabled(
                 !st.manual_name.trim().is_empty(),
-                egui::Button::new("Hinzufügen"),
+                egui::Button::new(t!("Hinzufügen")),
             )
             .clicked()
         {
@@ -1551,17 +1542,17 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
     ui.separator();
 
     // ---------------------------------------------------------- EVE-Assets
-    ui.label(RichText::new("Aus deinen EVE-Assets").color(GREEN).strong());
+    ui.label(RichText::new(t!("Aus deinen EVE-Assets")).color(GREEN).strong());
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Client-ID").color(CYAN));
+        ui.label(RichText::new(t!("Client-ID")).color(CYAN));
         ui.add(egui::TextEdit::singleline(&mut st.client_id).desired_width(260.0))
-            .on_hover_text("Client-ID deiner App auf developers.eveonline.com");
-        if ui.button("Übernehmen").clicked() {
+            .on_hover_text(t!("Client-ID deiner App auf developers.eveonline.com"));
+        if ui.button(t!("Übernehmen")).clicked() {
             engine
                 .lock()
                 .expect("engine")
                 .set_sso_client_id(&st.client_id);
-            st.prize_info = Some("Client-ID gespeichert.".into());
+            st.prize_info = Some(t!("Client-ID gespeichert.").into());
         }
         ui.hyperlink_to(
             "developers.eveonline.com",
@@ -1571,46 +1562,46 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
     let callback = crate::sso::callback_url(port);
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new("Callback-URL für die App:")
+            RichText::new(t!("Callback-URL für die App:"))
                 .color(DIM)
                 .size(11.0),
         );
         ui.label(RichText::new(&callback).size(11.0));
-        if ui.small_button("kopieren").clicked() {
+        if ui.small_button(t!("kopieren")).clicked() {
             ui.ctx().copy_text(callback.clone());
         }
     });
     let mut structures = engine.lock().expect("engine").cfg.eve_sso_structures;
     ui.horizontal(|ui| {
         if ui
-            .checkbox(&mut structures, "Strukturnamen (Citadels) anzeigen")
+            .checkbox(&mut structures, t!("Strukturnamen (Citadels) anzeigen"))
             .on_hover_text(
-                "Fragt zusätzlich den Scope esi-universe.read_structures.v1 an. Der muss dann auch in deiner EVE-App eingetragen sein; gilt ab der nächsten Anmeldung.",
+                t!("Fragt zusätzlich den Scope esi-universe.read_structures.v1 an. Der muss dann auch in deiner EVE-App eingetragen sein; gilt ab der nächsten Anmeldung."),
             )
             .changed()
         {
             engine.lock().expect("engine").set_sso_structures(structures);
         }
         ui.label(
-            RichText::new(format!("Scopes in der App: {}", crate::sso::scopes(structures)))
+            RichText::new(t!("Scopes in der App: {a1}", a1 = crate::sso::scopes(structures)))
                 .color(DIM)
                 .size(11.0),
         );
     });
     ui.horizontal(|ui| {
         if connected {
-            ui.label(RichText::new(format!("Verbunden als {character}")).color(GREEN));
+            ui.label(RichText::new(t!("Verbunden als {character}", character = character)).color(GREEN));
             if ui
-                .add_enabled(!loading, egui::Button::new("Assets laden"))
+                .add_enabled(!loading, egui::Button::new(t!("Assets laden")))
                 .clicked()
             {
                 engine.lock().expect("engine").load_assets();
             }
-            if ui.button("Abmelden").clicked() {
+            if ui.button(t!("Abmelden")).clicked() {
                 engine.lock().expect("engine").sso_logout();
             }
         } else if ui
-            .button(RichText::new("Mit EVE verbinden").color(GREEN))
+            .button(RichText::new(t!("Mit EVE verbinden")).color(GREEN))
             .clicked()
         {
             let res = engine.lock().expect("engine").sso_begin();
@@ -1628,10 +1619,10 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
         ui.label(RichText::new(info).color(YELLOW).size(12.0));
     }
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Suche").color(CYAN));
+        ui.label(RichText::new(t!("Suche")).color(CYAN));
         ui.add(
             egui::TextEdit::singleline(&mut st.asset_search)
-                .hint_text("Name oder Ort")
+                .hint_text(t!("Name oder Ort"))
                 .desired_width(260.0),
         );
     });
@@ -1662,7 +1653,7 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
         .column(egui_extras::Column::remainder().clip(true))
         .column(egui_extras::Column::exact(96.0))
         .header(20.0, |mut h| {
-            for t in ["", "Item", "Menge", "Ort", ""] {
+            for t in ["", &t!("Item"), &t!("Menge"), &t!("Ort"), ""] {
                 h.col(|ui| {
                     ui.label(RichText::new(t).color(CYAN).strong());
                 });
@@ -1684,8 +1675,8 @@ fn prizes_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>)
                 });
                 row.col(|ui| {
                     if in_list.contains(&a.item_id) {
-                        ui.label(RichText::new("✓ Preis").color(GREEN));
-                    } else if ui.button("+ als Preis").clicked() {
+                        ui.label(RichText::new(t!("✓ Preis")).color(GREEN));
+                    } else if ui.button(t!("+ als Preis")).clicked() {
                         add = Some(a.clone());
                     }
                 });

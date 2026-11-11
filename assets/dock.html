@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Matrix-Run Dock</title>
+<title>Cyber Giveaway Dock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -136,7 +136,7 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
 
 <div class="actions">
   <button id="toggle" class="btn main" type="button">START</button>
-  <button id="breach" class="btn breach" type="button" title="Matrix-Run sofort starten">BREACH</button>
+  <button id="breach" class="btn breach" type="button" title="Auslosung sofort starten">BREACH</button>
   <button id="reset" class="btn reset" type="button">RESET</button>
 </div>
 <div id="feedback" class="feedback" role="alert"></div>
@@ -164,6 +164,10 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
 <details id="cfgsec" class="sect">
   <summary>Einstellungen</summary>
   <form id="cfg" class="grp" autocomplete="off">
+    <h3>Sprache / Language</h3>
+    <div class="form">
+      <label for="s_lang">Sprache</label><select id="s_lang" name="language"><option value="de">Deutsch</option><option value="en">English</option></select>
+    </div>
     <h3>Twitch</h3>
     <div class="form">
       <label for="s_channel">Kanal</label><input type="text" id="s_channel" name="channel">
@@ -204,9 +208,6 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
     <div class="form">
       <label class="chk"><input type="checkbox" name="eve_enabled"> EVE-Modus (Befehl im Chat)</label>
       <label for="s_evecmd">Befehl</label><input type="text" id="s_evecmd" name="eve_command">
-      <label for="s_eveurl">eve2twitch-URL</label><input type="text" id="s_eveurl" name="eve_api_url">
-      <label for="s_evekey">eve2twitch-Key</label><input type="password" id="s_evekey" name="eve_api_key">
-      <label for="s_evebot">Eve2Twitch-Bot</label><input type="text" id="s_evebot" name="eve2twitch_bot_name" placeholder="leer = alle">
       <label class="chk"><input type="checkbox" name="hide_eve_names"> Spielnamen und Porträts im Overlay verbergen</label>
     </div>
     <h3>Spielnamen anderer Spiele</h3>
@@ -281,6 +282,18 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
 <div id="log" class="log" aria-label="Protokoll"></div>
 
 <script>
+// ---------- Sprache (Wörterbuch /i18n/en.json, Schlüssel = deutscher Text) ----------
+let DICT=null,LANG='de';
+const T=(de,vars)=>{let s=(LANG==='en'&&DICT&&DICT[de])||de;for(const [k,v] of Object.entries(vars||{}))s=s.split(`{${k}}`).join(v);return s;};
+async function setLang(l){
+  if(l===LANG)return;
+  if(LANG==='en'&&l!=='en'){location.reload();return;} // zurück auf Deutsch: Originaltexte neu laden
+  if(!DICT){try{DICT=await (await fetch('/i18n/en.json',{cache:'no-store'})).json();}catch(e){return;}}
+  LANG=l;document.documentElement.lang=l;
+  const tw=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let n;
+  while((n=tw.nextNode())){const t=n.nodeValue.trim();if(t&&DICT[t])n.nodeValue=n.nodeValue.replace(t,DICT[t]);}
+  document.querySelectorAll('[placeholder],[title]').forEach(el=>{for(const a of ['placeholder','title']){const v=el.getAttribute(a);if(v&&DICT[v])el.setAttribute(a,DICT[v]);}});
+}
 'use strict';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -294,8 +307,8 @@ async function send(body){
   $('feedback').textContent='';
   try{
     const r=await fetch('/api/dock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(!r.ok)$('feedback').textContent=(await r.text())||`Fehler ${r.status}`;
-  }catch(e){$('feedback').textContent='Giveaway-Tool nicht erreichbar.';}
+    if(!r.ok)$('feedback').textContent=(await r.text())||T('Fehler {n}',{n:r.status});
+  }catch(e){$('feedback').textContent=T('Giveaway-Tool nicht erreichbar.');}
 }
 const kw=()=>$('kw').value.trim()||(S&&S.keyword)||'!join';
 const wn=()=>{const n=parseInt($('wn').value,10);return Number.isFinite(n)&&n>=1?Math.min(n,100):undefined;};
@@ -311,10 +324,10 @@ $('auto').onchange=e=>send({cmd:'auto',enabled:e.target.checked});
 function render(){
   const s=S;
   $('conn').className='conn'+(online?'':' off');
-  $('conn').textContent=online?'Verbunden mit dem Giveaway-Tool':'Keine Verbindung – läuft das Giveaway-Tool?';
+  $('conn').textContent=online?T('Verbunden mit dem Giveaway-Tool'):T('Keine Verbindung – läuft das Giveaway-Tool?');
   for(const id of ['toggle','breach','reset','auto'])$(id).disabled=!online||!s;
   const armed=performance.now()<armedUntil;
-  $('reset').classList.toggle('armed',armed);$('reset').textContent=armed?'Wirklich?':'RESET';
+  $('reset').classList.toggle('armed',armed);$('reset').textContent=armed?T('Wirklich?'):'RESET';
   if(!s)return;
   if(!filled||!edited.has('kw'))$('kw').value=s.keyword;
   if(!filled||!edited.has('dur'))$('dur').value=s.duration;
@@ -334,19 +347,19 @@ function render(){
   $('clock').classList.remove('urgent');
   if(open&&s.timer_active){mode='open';endAt=performance.now()+s.timer_remaining*1000;total=0;
     $('sub').innerHTML=`Chat: <kbd>${esc(s.keyword)}</kbd>`;}
-  else if(open){mode='static';$('clock').textContent='Manuell';$('sub').innerHTML=`Chat: <kbd>${esc(s.keyword)}</kbd> · Ende per Hand`;}
+  else if(open){mode='static';$('clock').textContent=T('Manuell');$('sub').innerHTML=`Chat: <kbd>${esc(s.keyword)}</kbd> · ${esc(T('Ende per Hand'))}`;}
   else if(s.phase==='run'&&s.run){mode='static';$('clock').textContent=`OW ${s.run.os}/${s.run.os_max}`;
     $('sub').textContent=s.run.phase;$('prog').style.width=`${Math.round(s.run.overall*100)}%`;}
-  else if(s.phase==='winner'){mode='static';$('clock').textContent='Erfolg';$('sub').textContent='';$('prog').style.width='100%';}
-  else if(a.state==='wartet'){mode='auto';endAt=performance.now()+a.remaining*1000;total=a.total;$('sub').textContent='bis zum nächsten Auto-Giveaway';}
+  else if(s.phase==='winner'){mode='static';$('clock').textContent=T('Erfolg');$('sub').textContent='';$('prog').style.width='100%';}
+  else if(a.state==='wartet'){mode='auto';endAt=performance.now()+a.remaining*1000;total=a.total;$('sub').textContent=T('bis zum nächsten Auto-Giveaway');}
   else{mode='static';$('clock').textContent='—';$('sub').textContent='';$('prog').style.width='0';}
 
   $('auto').checked=!!a.enabled;
-  $('autod').textContent=!a.enabled?'aus':a.state==='wartet'?`alle ${s.auto_interval} · nächstes in ${clock(a.remaining)}`:`alle ${s.auto_interval} · Giveaway läuft`;
+  $('autod').textContent=!a.enabled?T('aus'):a.state==='wartet'?T('alle {i} · nächstes in {t}',{i:s.auto_interval,t:clock(a.remaining)}):T('alle {i} · Giveaway läuft',{i:s.auto_interval});
 
   const n=s.winners_count||1;
   const prizeParts=[];
-  if(s.prize)prizeParts.push(`<span>Zu gewinnen:</span> ${esc(s.prize)}`);
+  if(s.prize)prizeParts.push(`<span>${esc(T('Zu gewinnen:'))}</span> ${esc(s.prize)}`);
   if(n>1)prizeParts.push(`<span>${s.prize?'· ':''}${n} Gewinner</span>`);
   $('prizebox').hidden=!prizeParts.length||s.phase==='winner';$('prizebox').innerHTML=prizeParts.join(' ');
 
@@ -363,6 +376,7 @@ function render(){
   const log=$('log');const atEnd=log.scrollTop+log.clientHeight>=log.scrollHeight-4;
   log.innerHTML=s.log.map(l=>`<p class="${esc(l.tone)}"><time>${esc(l.stamp)}</time>${esc(l.text)}</p>`).join('');
   if(atEnd)log.scrollTop=log.scrollHeight;
+  if(s.settings&&s.settings.language)setLang(s.settings.language);
   if(s.settings){fillSettings(s.settings);fillPrizes(s.settings);fillSso(s.settings);fillUpdate(s.settings);}
   tick();
 }
@@ -385,25 +399,24 @@ function fillSettings(c){
   const sel=$('s_theme'),list=c.themes||[];
   const key=list.map(t=>t.id+t.name).join('|');
   if(sel.dataset.key!==key){sel.dataset.key=key;
-    sel.innerHTML=list.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}${t.builtin?'':' (eigenes)'}</option>`).join('');}
+    sel.innerHTML=list.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}${t.builtin?'':' '+esc(T('(eigenes)'))}</option>`).join('');}
   for(const el of cfgForm.elements){
     if(!el.name)continue;
     if(el.type==='checkbox')el.checked=!!c[el.name];
     else if(el.type==='password'){el.value='';}
     else el.value=c[el.name]??'';
   }
-  $('s_token').placeholder=c.oauth_token_set?'gesetzt – leer lassen, um es zu behalten':'nicht gesetzt';
-  $('s_evekey').placeholder=c.eve_api_key_set?'gesetzt – leer lassen':'nicht gesetzt';
-  $('s_wowsec').placeholder=c.wow_client_secret_set?'gesetzt – leer lassen':'nicht gesetzt';
-  $('s_token_hint').textContent='Tokens werden nie angezeigt; nur ein neu eingetragener Wert wird gespeichert.';
+  $('s_token').placeholder=c.oauth_token_set?T('gesetzt – leer lassen, um es zu behalten'):T('nicht gesetzt');
+  $('s_wowsec').placeholder=c.wow_client_secret_set?T('gesetzt – leer lassen'):T('nicht gesetzt');
+  $('s_token_hint').textContent=T('Tokens werden nie angezeigt; nur ein neu eingetragener Wert wird gespeichert.');
 }
 function msg(id,text,ok){const m=$(id);m.textContent=text;m.className='msg '+(ok?'ok':'err');}
 async function cmd(body){
   try{
     const r=await fetch('/api/dock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const j=await r.json().catch(()=>({ok:false,error:`Fehler ${r.status}`}));
+    const j=await r.json().catch(()=>({ok:false,error:T('Fehler {n}',{n:r.status})}));
     return j;
-  }catch(e){return {ok:false,error:'Giveaway-Tool nicht erreichbar.'};}
+  }catch(e){return {ok:false,error:T('Giveaway-Tool nicht erreichbar.')};}
 }
 cfgForm.addEventListener('submit',async ev=>{
   ev.preventDefault();
@@ -421,22 +434,22 @@ cfgForm.addEventListener('submit',async ev=>{
   const r=await cmd({cmd:'settings',settings:patch});
   if(r.ok&&winners&&winners!==c.winners)await cmd({cmd:'winners',n:Math.max(1,Math.min(100,Math.round(winners)))});
   $('cfgsave').disabled=false;
-  if(r.ok){cfgDirty=false;msg('cfgmsg','Gespeichert.',true);}
-  else msg('cfgmsg',r.error||'Nicht gespeichert.',false);
+  if(r.ok){cfgDirty=false;msg('cfgmsg',T('Gespeichert.'),true);}
+  else msg('cfgmsg',r.error||T('Nicht gespeichert.'),false);
 });
 // Update
 function fillUpdate(c){
-  $('upver').textContent=`Installiert: v${c.version}`;$('upstat').textContent=c.update_status||'';
+  $('upver').textContent=T('Installiert: v{v}',{v:c.version});$('upstat').textContent=c.update_status||'';
   const u=c.update;$('upinstall').hidden=!(u&&u.asset);$('upinstall').disabled=!!c.update_busy;$('upcheck').disabled=!!c.update_busy;
-  if(u)$('upinstall').textContent=`Auf v${u.version} aktualisieren`;
-  $('upbanner').hidden=!u;if(u)$('upbanner').innerHTML=`Neue Version <b>v${esc(u.version)}</b> verfügbar – <a href="#" id="upgo">jetzt aktualisieren</a>`;
+  if(u)$('upinstall').textContent=T('Auf v{v} aktualisieren',{v:u.version});
+  $('upbanner').hidden=!u;if(u)$('upbanner').innerHTML=`${esc(T('Neue Version v{v} verfügbar',{v:u.version}))} – <a href="#" id="upgo">${esc(T('jetzt aktualisieren'))}</a>`;
   const go=$('upgo');if(go)go.onclick=ev=>{ev.preventDefault();$('upinstall').click();};
 }
-$('upcheck').onclick=async()=>{const r=await cmd({cmd:'updatecheck'});if(!r.ok)msg('cfgmsg',r.error||'Fehler',false);};
-$('upinstall').onclick=async()=>{const r=await cmd({cmd:'updateinstall'});msg('cfgmsg',r.ok?'Update wird geladen – das Programm startet danach neu.':(r.error||'Fehler'),r.ok);};
+$('upcheck').onclick=async()=>{const r=await cmd({cmd:'updatecheck'});if(!r.ok)msg('cfgmsg',r.error||T('Fehler'),false);};
+$('upinstall').onclick=async()=>{const r=await cmd({cmd:'updateinstall'});msg('cfgmsg',r.ok?T('Update wird geladen – das Programm startet danach neu.'):(r.error||T('Fehler')),r.ok);};
 $('themepreview').onclick=ev=>{ev.preventDefault();window.open(`/test?theme=${encodeURIComponent($('s_theme').value)}`,'_blank');};
 $('themereload').onclick=async ev=>{ev.preventDefault();const r=await cmd({cmd:'reloadthemes'});
-  msg('cfgmsg',r.ok?'Designs neu geladen.':(r.error||'Fehler'),r.ok);};
+  msg('cfgmsg',r.ok?T('Designs neu geladen.'):(r.error||T('Fehler')),r.ok);};
 $('cfgreset').onclick=()=>{cfgDirty=false;$('cfgmsg').textContent='';if(S&&S.settings)fillSettings(S.settings);};
 
 // ---------------------------------------------------------------- Preise
@@ -454,13 +467,13 @@ function drawPrizes(){
         <button class="mini" type="button" data-del="${i}" aria-label="entfernen">×</button>
       </span>
       ${p.location?`<div class="loc" title="${esc(p.location)}">${esc(p.location)}</div>`:''}
-    </div>`).join(''):'<div class="msg">Noch keine Preise.</div>';
+    </div>`).join(''):`<div class="msg">${esc(T('Noch keine Preise.'))}</div>`;
 }
 async function savePrizes(){
   prizesBusy=true;
   const r=await cmd({cmd:'prizes',prizes,text:$('p_text').value});
   prizesBusy=false;pzTextDirty=false;
-  if(r.ok)msg('pzmsg','Gespeichert.',true);else msg('pzmsg',r.error||'Nicht gespeichert.',false);
+  if(r.ok)msg('pzmsg',T('Gespeichert.'),true);else msg('pzmsg',r.error||T('Nicht gespeichert.'),false);
 }
 $('pzlist').addEventListener('change',e=>{const i=+e.target.dataset.i,k=e.target.dataset.k;if(!k)return;
   prizes[i][k]=k==='quantity'?Math.max(1,parseInt(e.target.value,10)||1):e.target.value;savePrizes();});
@@ -485,7 +498,7 @@ function fillPrizes(c){
 let assets=[], assetsVersion=-1, ssoDirty=false;
 ['sso_cid','sso_struct'].forEach(id=>$(id).addEventListener('input',()=>{ssoDirty=true;}));
 function fillSso(c){
-  $('sso_state').textContent=c.eve_sso_connected?`Verbunden als ${c.eve_sso_character_name} · ${c.assets_status}`:(c.eve_sso_client_id?c.assets_status:'Zuerst unter „EVE-App einrichten“ die Client-ID eintragen.');
+  $('sso_state').textContent=c.eve_sso_connected?T('Verbunden als {n}',{n:c.eve_sso_character_name})+` · ${c.assets_status}`:(c.eve_sso_client_id?c.assets_status:T('Zuerst unter „EVE-App einrichten“ die Client-ID eintragen.'));
   $('sso_connect').hidden=c.eve_sso_connected;$('sso_load').hidden=!c.eve_sso_connected;$('sso_logout').hidden=!c.eve_sso_connected;
   $('sso_load').disabled=c.assets_loading;
   $('sso_cb').textContent=c.callback_url;$('sso_scopes').textContent=c.scopes;
@@ -501,11 +514,11 @@ function drawAssets(){
   const have=new Set(prizes.filter(p=>p.item_id).map(p=>p.item_id));
   const list=assets.filter(a=>!q||a.name.toLowerCase().includes(q)||a.location.toLowerCase().includes(q));
   const shown=list.slice(0,200);
-  $('assets').innerHTML=(assets.length?'':'<div class="msg" style="padding:6px 0">Keine Assets geladen.</div>')+shown.map((a,i)=>`
+  $('assets').innerHTML=(assets.length?'':`<div class="msg" style="padding:6px 0">${esc(T('Keine Assets geladen.'))}</div>`)+shown.map((a,i)=>`
     <div class="arow"><img src="${icon(a.type_id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
       <div><div class="n" title="${esc(a.name)}">${a.quantity>1?`${a.quantity.toLocaleString('de-DE')}× `:''}${esc(a.name)}</div><div class="l" title="${esc(a.location)}">${esc(a.location)}</div></div>
-      ${have.has(a.item_id)?'<span class="on">✓ Preis</span>':`<button class="mini" type="button" data-add="${a.item_id}">+ Preis</button>`}</div>`).join('')
-    +(list.length>200?`<div class="msg" style="padding:6px 0">${list.length-200} weitere – Suche verfeinern.</div>`:'');
+      ${have.has(a.item_id)?`<span class="on">${esc(T('✓ Preis'))}</span>`:`<button class="mini" type="button" data-add="${a.item_id}">${esc(T('+ Preis'))}</button>`}</div>`).join('')
+    +(list.length>200?`<div class="msg" style="padding:6px 0">${esc(T('{n} weitere – Suche verfeinern.',{n:list.length-200}))}</div>`:'');
 }
 $('a_q').addEventListener('input',drawAssets);
 $('assets').addEventListener('click',e=>{const b=e.target.closest('button[data-add]');if(!b)return;
@@ -513,13 +526,13 @@ $('assets').addEventListener('click',e=>{const b=e.target.closest('button[data-a
   prizes.push({name:a.name,quantity:a.quantity,type_id:a.type_id,item_id:a.item_id,location:a.location});drawPrizes();drawAssets();savePrizes();});
 $('pzsec').addEventListener('toggle',()=>{if($('pzsec').open&&S&&S.settings){assetsVersion=S.settings.assets_version;fetchAssets();}});
 $('sso_connect').onclick=async()=>{const r=await cmd({cmd:'ssoconnect'});
-  if(r.ok)msg('pzmsg','Anmeldung im Browser geöffnet – dort bestätigen.',true);else msg('pzmsg',r.error,false);};
+  if(r.ok)msg('pzmsg',T('Anmeldung im Browser geöffnet – dort bestätigen.'),true);else msg('pzmsg',r.error,false);};
 $('sso_load').onclick=()=>cmd({cmd:'loadassets'});
 $('sso_logout').onclick=()=>cmd({cmd:'ssologout'});
 $('sso_save').onclick=async()=>{
   await cmd({cmd:'ssoclient',id:$('sso_cid').value.trim()});
   const r=await cmd({cmd:'ssostructures',enabled:$('sso_struct').checked});
-  ssoDirty=false;if(r.ok)msg('pzmsg','EVE-App gespeichert.',true);else msg('pzmsg',r.error,false);};
+  ssoDirty=false;if(r.ok)msg('pzmsg',T('EVE-App gespeichert.'),true);else msg('pzmsg',r.error,false);};
 
 let retry=500;
 function connect(){

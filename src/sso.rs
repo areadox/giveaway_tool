@@ -23,7 +23,7 @@ pub const STRUCTURE_SCOPE: &str = "esi-universe.read_structures.v1";
 /// (der Scope muss dann auch in der EVE-App eingetragen sein).
 pub fn scopes(structures: bool) -> String {
     if structures {
-        format!("{ASSET_SCOPE} {STRUCTURE_SCOPE}")
+        format!("{ASSET_SCOPE} {STRUCTURE_SCOPE}", ASSET_SCOPE = ASSET_SCOPE, STRUCTURE_SCOPE = STRUCTURE_SCOPE)
     } else {
         ASSET_SCOPE.to_string()
     }
@@ -116,29 +116,29 @@ fn http_err(e: ureq::Error) -> String {
                 .chars()
                 .take(300)
                 .collect();
-            format!("HTTP {code}: {}", body.trim())
+            format!("HTTP {code}: {a1}", code = code, a1 = body.trim())
         }
-        other => format!("nicht erreichbar: {other}"),
+        other => t!("nicht erreichbar: {other}", other = other),
     }
 }
 
 /// Liest Charakter-ID und -Name aus dem Access-Token (JWT).
 pub fn character_from_jwt(token: &str) -> Result<(i64, String), String> {
-    let payload = token.split('.').nth(1).ok_or("Token ohne Inhalt")?;
+    let payload = token.split('.').nth(1).ok_or(t!("Token ohne Inhalt"))?;
     let bytes = URL_SAFE_NO_PAD
         .decode(payload.trim_end_matches('='))
-        .map_err(|e| format!("Token nicht lesbar: {e}"))?;
+        .map_err(|e| t!("Token nicht lesbar: {e}", e = e))?;
     let v: Value =
-        serde_json::from_slice(&bytes).map_err(|e| format!("Token nicht lesbar: {e}"))?;
+        serde_json::from_slice(&bytes).map_err(|e| t!("Token nicht lesbar: {e}", e = e))?;
     let sub = v
         .get("sub")
         .and_then(Value::as_str)
-        .ok_or("Token ohne Charakter")?;
+        .ok_or(t!("Token ohne Charakter"))?;
     let id = sub
         .rsplit(':')
         .next()
         .and_then(|s| s.parse().ok())
-        .ok_or("Charakter-ID fehlt im Token")?;
+        .ok_or(t!("Charakter-ID fehlt im Token"))?;
     let name = v
         .get("name")
         .and_then(Value::as_str)
@@ -174,18 +174,18 @@ fn token_request(form: &[(&str, &str)]) -> Result<Login, String> {
         .post(TOKEN)
         .set("Host", "login.eveonline.com")
         .send_form(form)
-        .map_err(|e| format!("EVE-Login {}", http_err(e)))?
+        .map_err(|e| format!("EVE-Login {a1}", a1 = http_err(e)))?
         .into_json()
         .map_err(|e| e.to_string())?;
     let access = v
         .get("access_token")
         .and_then(Value::as_str)
-        .ok_or("Kein Access-Token erhalten")?
+        .ok_or(t!("Kein Access-Token erhalten"))?
         .to_string();
     let refresh = v
         .get("refresh_token")
         .and_then(Value::as_str)
-        .ok_or("Kein Refresh-Token erhalten")?
+        .ok_or(t!("Kein Refresh-Token erhalten"))?
         .to_string();
     let (character_id, character_name) = character_from_jwt(&access)?;
     let scopes = scopes_from_jwt(&access);
@@ -233,7 +233,7 @@ struct RawAsset {
 #[allow(clippy::result_large_err)] // ureq::Error ist groß, aber selten
 fn esi_get(a: &ureq::Agent, path: &str, token: &str) -> Result<ureq::Response, ureq::Error> {
     a.get(&format!("{ESI}{path}"))
-        .set("Authorization", &format!("Bearer {token}"))
+        .set("Authorization", &format!("Bearer {token}", token = token))
         .set("Accept", "application/json")
         .call()
 }
@@ -319,7 +319,7 @@ fn resolve(a: &ureq::Agent, login: &Login, raw: Vec<RawAsset>) -> Vec<AssetRow> 
     let can_read_structures = login.has_scope(STRUCTURE_SCOPE);
     for sid in structures {
         if !can_read_structures {
-            names.insert(sid, format!("Struktur {sid}"));
+            names.insert(sid, format!("Struktur {sid}", sid = sid));
             continue;
         }
         let n = esi_get(
@@ -330,7 +330,7 @@ fn resolve(a: &ureq::Agent, login: &Login, raw: Vec<RawAsset>) -> Vec<AssetRow> 
         .ok()
         .and_then(|r| r.into_json::<Value>().ok())
         .and_then(|v| v.get("name").and_then(Value::as_str).map(str::to_string))
-        .unwrap_or_else(|| format!("Struktur {sid}"));
+        .unwrap_or_else(|| format!("Struktur {sid}", sid = sid));
         names.insert(sid, n);
     }
     // Eigene Namen von Schiffen/Containern, in denen etwas liegt
@@ -381,12 +381,12 @@ fn build_rows(
         .map(|r| {
             let (loc, chain) = root_path(&by_id, r);
             let mut location = if r.location_flag == "AssetSafety" || loc == 2004 {
-                "Asset Safety".to_string()
+                t!("Asset Safety").to_string()
             } else {
                 names
                     .get(&loc)
                     .cloned()
-                    .unwrap_or_else(|| format!("Ort {loc}"))
+                    .unwrap_or_else(|| format!("Ort {loc}", loc = loc))
             };
             for c in chain {
                 let label = item_names

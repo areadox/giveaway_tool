@@ -49,10 +49,6 @@ pub enum Inbound {
         ign: Option<String>,
         error: Option<String>,
     },
-    JoinReady {
-        login: String,
-        ign: Option<String>,
-    },
     /// Charakter-ID (und Ticker) wurde über ESI nachgeschlagen.
     /// Callback der EVE-Anmeldung (vom Webserver)
     SsoCode {
@@ -109,13 +105,11 @@ pub struct SettingsPatch {
     pub win_message: Option<String>,
     pub eve_enabled: Option<bool>,
     pub eve_command: Option<String>,
-    pub eve_api_url: Option<String>,
-    pub eve_api_key: Option<String>,
-    pub eve2twitch_bot_name: Option<String>,
     pub hide_eve_names: Option<bool>,
     pub start_in_tray: Option<bool>,
     pub close_to_tray: Option<bool>,
     pub overlay_show_open: Option<bool>,
+    pub language: Option<String>,
     pub theme: Option<String>,
     pub wow_client_id: Option<String>,
     pub wow_client_secret: Option<String>,
@@ -130,6 +124,9 @@ impl SettingsPatch {
     /// Wendet den Patch auf eine Kopie der Konfiguration an und prüft Zahlenbereiche.
     pub fn apply_to(&self, base: &Config) -> Result<Config, String> {
         let mut c = base.clone();
+        if let Some(l) = &self.language {
+            c.switch_language(l);
+        }
         macro_rules! set {
             ($($f:ident),*) => { $( if let Some(v) = &self.$f { c.$f = v.clone(); } )* };
         }
@@ -147,8 +144,6 @@ impl SettingsPatch {
             win_message,
             eve_enabled,
             eve_command,
-            eve_api_url,
-            eve2twitch_bot_name,
             hide_eve_names,
             start_in_tray,
             close_to_tray,
@@ -172,24 +167,21 @@ impl SettingsPatch {
         if let Some(t) = self.oauth_token.as_ref().filter(|t| !t.trim().is_empty()) {
             c.oauth_token = t.trim().to_string();
         }
-        if let Some(k) = self.eve_api_key.as_ref().filter(|k| !k.trim().is_empty()) {
-            c.eve_api_key = k.trim().to_string();
-        }
         if let Some(p) = self.web_port {
             if !(1..=65535).contains(&p) {
-                return Err("Port muss 1–65535 sein".into());
+                return Err(t!("Port muss 1–65535 sein").into());
             }
             c.web_port = p as u16;
         }
         if let Some(h) = self.hack_duration {
             if !h.is_finite() || h < 8.0 {
-                return Err("Run-Dauer: Zahl ab 8 Sekunden".into());
+                return Err(t!("Run-Dauer: Zahl ab 8 Sekunden").into());
             }
             c.hack_duration = h.min(600.0);
         }
         if let Some(h) = self.auto_winner_hold {
             if !h.is_finite() || h < 3.0 {
-                return Err("Gewinner-Anzeige: mindestens 3 Sekunden".into());
+                return Err(t!("Gewinner-Anzeige: mindestens 3 Sekunden").into());
             }
             c.auto_winner_hold = h.min(3600.0);
         }
@@ -488,7 +480,7 @@ impl Engine {
             participant_set: HashSet::new(),
             active_keyword: keyword,
             winners: Vec::new(),
-            status: "BEREIT".into(),
+            status: t!("BEREIT"),
             status_tone: Tone::Cyan,
             countdown_text: "—".into(),
             countdown_tone: Tone::Yellow,
@@ -506,7 +498,7 @@ impl Engine {
             auto_last_sec: u64::MAX,
             sso_pending: None,
             assets: Vec::new(),
-            assets_status: "Noch nicht geladen".into(),
+            assets_status: t!("Noch nicht geladen").into(),
             assets_loading: false,
             assets_version: 0,
             tx,
@@ -526,15 +518,11 @@ impl Engine {
         };
         e.refresh_igns();
         e.log(
-            "System initialisiert; Twitch-Reader wird gestartet.",
+            t!("System initialisiert; Twitch-Reader wird gestartet."),
             Tone::Green,
         );
         e.log(
-            format!(
-                "Keyword: {} | Ausschlüsse: {}",
-                e.active_keyword,
-                EXCLUDE_USERS.join(", ")
-            ),
+            t!("Keyword: {a1} | Ausschlüsse: {a2}", a1 = e.active_keyword, a2 = EXCLUDE_USERS.join(", ")),
             Tone::Dark,
         );
         e.start_overlay();
@@ -551,7 +539,7 @@ impl Engine {
             return;
         }
         self.update_busy = true;
-        self.update_status = "Suche nach Updates …".into();
+        self.update_status = t!("Suche nach Updates …").into();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let _ = tx.send(Inbound::UpdateChecked {
@@ -564,18 +552,18 @@ impl Engine {
 
     pub fn install_update(&mut self) -> Result<(), String> {
         let Some(rel) = self.update.clone() else {
-            return Err("Kein Update verfügbar".into());
+            return Err(t!("Kein Update verfügbar").into());
         };
         if matches!(self.phase, Phase::Running | Phase::Open) {
-            return Err("Bitte erst das laufende Giveaway abschließen".into());
+            return Err(t!("Bitte erst das laufende Giveaway abschließen").into());
         }
         if self.update_busy {
-            return Err("Update läuft bereits".into());
+            return Err(t!("Update läuft bereits").into());
         }
         self.update_busy = true;
-        self.update_status = format!("Lade v{} herunter …", rel.version);
+        self.update_status = t!("Lade v{a1} herunter …", a1 = rel.version);
         self.log(
-            format!("Update auf v{} wird geladen …", rel.version),
+            t!("Update auf v{a1} wird geladen …", a1 = rel.version),
             Tone::Cyan,
         );
         let tx = self.tx.clone();
@@ -621,14 +609,11 @@ impl Engine {
         let arg = esi::clean_name(&arg);
         if arg.is_empty() {
             let msg = match self.db.get_game_name(&login, &game.game) {
-                Some(g) => format!(
-                    "@{login} Dein {}: {} – ändern mit {} Name",
-                    game.label, g.name, game.command
-                ),
+                Some(g) => t!("@{login} Dein {a1}: {a2} – ändern mit {a3} Name", login = login, a1 = game.label, a2 = g.name, a3 = game.command),
                 None if game.game == "wow" => {
-                    format!("@{login} Bitte so eintragen: {} Name-Realm", game.command)
+                    t!("@{login} Bitte so eintragen: {a1} Name-Realm", login = login, a1 = game.command)
                 }
-                None => format!("@{login} Bitte so eintragen: {} Name", game.command),
+                None => t!("@{login} Bitte so eintragen: {a1} Name", login = login, a1 = game.command),
             };
             self.sender.send(msg);
             return;
@@ -637,10 +622,7 @@ impl Engine {
         let tx = self.tx.clone();
         if game.game == "wow" {
             let Some((name, realm)) = wow::parse_command(&arg, &self.cfg.wow_realm) else {
-                self.sender.send(format!(
-                    "@{login} Bitte so eintragen: {} Name-Realm",
-                    game.command
-                ));
+                self.sender.send(t!("@{login} Bitte so eintragen: {a1} Name-Realm", login = login, a1 = game.command));
                 return;
             };
             let creds = self.cfg.wow_ready().then(|| {
@@ -668,16 +650,16 @@ impl Engine {
                 let msg = match res {
                     Ok((shown, sum)) => Inbound::GameDone {
                         reply: if sum.is_empty() {
-                            format!("@{login} {} gespeichert: {shown}", game.label)
+                            format!("@{login} {a1} gespeichert: {shown}", login = login, a1 = game.label, shown = shown)
                         } else {
-                            format!("@{login} {} gespeichert: {shown} ({sum})", game.label)
+                            format!("@{login} {a1} gespeichert: {shown} ({sum})", login = login, a1 = game.label, shown = shown, sum = sum)
                         },
-                        log: format!("{}: @{login} // {shown}", game.label),
+                        log: format!("{a1}: @{login} // {shown}", a1 = game.label, login = login, shown = shown),
                         ok: true,
                     },
                     Err(e) => Inbound::GameDone {
                         reply: format!("@{login} {e}"),
-                        log: format!("{} für @{login} abgelehnt: {e}", game.label),
+                        log: t!("{a1} für @{login} abgelehnt: {e}", a1 = game.label, login = login, e = e),
                         ok: false,
                     },
                 };
@@ -688,13 +670,13 @@ impl Engine {
         let name: String = arg.chars().filter(|c| !c.is_control()).take(40).collect();
         let msg = match db.set_game_name(&login, &game.game, &name, None) {
             Ok(()) => Inbound::GameDone {
-                reply: format!("@{login} {} gespeichert: {name}", game.label),
-                log: format!("{}: @{login} // {name}", game.label),
+                reply: format!("@{login} {a1} gespeichert: {name}", login = login, a1 = game.label, name = name),
+                log: format!("{a1}: @{login} // {name}", a1 = game.label, login = login, name = name),
                 ok: true,
             },
             Err(e) => Inbound::GameDone {
                 reply: format!("@{login} {e}"),
-                log: format!("{} für @{login} abgelehnt: {e}", game.label),
+                log: t!("{a1} für @{login} abgelehnt: {e}", a1 = game.label, login = login, e = e),
                 ok: false,
             },
         };
@@ -718,19 +700,19 @@ impl Engine {
             (Some(p), _) => {
                 self.overlay_url = format!("http://localhost:{p}");
                 self.log(
-                    format!("OVERLAY: {0} | DEMO: {0}/test", self.overlay_url),
+                    t!("OVERLAY: {a1} | DEMO: {a1}/test", a1 = self.overlay_url),
                     Tone::Cyan,
                 );
                 if *p != self.cfg.web_port {
                     self.log(
-                        format!("Port {} belegt – Overlay läuft auf {p}.", self.cfg.web_port),
+                        t!("Port {a1} belegt – Overlay läuft auf {p}.", a1 = self.cfg.web_port, p = p),
                         Tone::Yellow,
                     );
                 }
             }
             (None, Some(e)) => {
                 self.overlay_url.clear();
-                self.log(format!("Overlay-Fehler: {e}"), Tone::Red);
+                self.log(format!("Overlay-Fehler: {e}", e = e), Tone::Red);
             }
             _ => {}
         }
@@ -760,8 +742,8 @@ impl Engine {
         sound::play(s, self.cfg.sound);
     }
 
-    fn set_status(&mut self, s: &str, tone: Tone) {
-        self.status = s.into();
+    fn set_status(&mut self, s: impl AsRef<str>, tone: Tone) {
+        self.status = s.as_ref().to_string();
         self.status_tone = tone;
         self.dirty = true;
     }
@@ -815,14 +797,14 @@ impl Engine {
             return;
         }
         if self.phase == Phase::Running {
-            self.log("BREACH läuft bereits.", Tone::Yellow);
+            self.log(t!("BREACH läuft bereits."), Tone::Yellow);
             return;
         }
         let secs = match config::parse_duration(duration_text) {
             Ok(s) => s,
             Err(e) => {
                 self.sfx(Sfx::Error);
-                self.log(format!("Ungültige Giveaway-Dauer: {e}"), Tone::Red);
+                self.log(t!("Ungültige Giveaway-Dauer: {e}", e = e), Tone::Red);
                 return;
             }
         };
@@ -832,14 +814,14 @@ impl Engine {
         self.winners.clear();
         self.run_view = None;
         self.phase = Phase::Open;
-        self.set_status("TEILNAHME OFFEN", Tone::Green);
+        self.set_status(t!("TEILNAHME OFFEN"), Tone::Green);
         self.log(
-            format!("EINGÄNGE OFFEN — Chat: {}", self.active_keyword),
+            t!("EINGÄNGE OFFEN — Chat: {a1}", a1 = self.active_keyword),
             Tone::Green,
         );
         if !self.prize_summary().is_empty() {
             let p = self.prize_summary();
-            self.log(format!("Zu gewinnen: {p}"), Tone::Cyan);
+            self.log(t!("Zu gewinnen: {p}", p = p), Tone::Cyan);
         }
         let prize = self.prize_summary();
         let mut open = self
@@ -848,19 +830,16 @@ impl Engine {
             .replace("{keyword}", &self.active_keyword)
             .replace("{prize}", &prize);
         if !prize.is_empty() && !self.cfg.open_message.contains("{prize}") {
-            open.push_str(&format!(" Zu gewinnen: {prize}."));
+            open.push_str(&t!(" Zu gewinnen: {prize}.", prize = prize));
         }
         let n = self.cfg.winners.max(1);
         if n > 1 {
-            open.push_str(&format!(" {n} Gewinner."));
+            open.push_str(&t!(" {n} Gewinner.", n = n));
         }
         if secs > 0 {
-            self.sender.send(format!(
-                "{open} Dauer: {}.",
-                config::format_clock(secs as f64)
-            ));
+            self.sender.send(format!("{open} Dauer: {a1}.", open = open, a1 = config::format_clock(secs as f64)));
         } else {
-            self.sender.send(format!("{open} Manuelles Ende."));
+            self.sender.send(t!("{open} Manuelles Ende.", open = open));
         }
         self.start_timer(secs);
     }
@@ -872,14 +851,14 @@ impl Engine {
             self.set_status("GESTOPPT", Tone::Cyan);
             self.sender.send(self.cfg.close_message.clone());
             self.log(
-                "Teilnahme gestoppt; keine Teilnehmer vorhanden.",
+                t!("Teilnahme gestoppt; keine Teilnehmer vorhanden."),
                 Tone::Yellow,
             );
             return;
         }
         self.sender.send(self.cfg.close_message.clone());
         self.log(
-            "Teilnahme gestoppt; Matrix-Run und Auslosung starten.",
+            t!("Teilnahme gestoppt; die Auslosung startet."),
             Tone::Yellow,
         );
         self.start_breach_inner();
@@ -894,19 +873,19 @@ impl Engine {
         match hack_text.trim().replace(',', ".").parse::<f64>() {
             Ok(v) if v.is_finite() && v >= 8.0 => self.cfg.hack_duration = v.min(600.0),
             _ => self.log(
-                "Ungültige Run-Dauer (mind. 8 s); bisheriger Wert bleibt.",
+                t!("Ungültige Run-Dauer (mind. 8 s); bisheriger Wert bleibt."),
                 Tone::Yellow,
             ),
         }
         self.sfx(Sfx::Click);
         if self.phase == Phase::Running {
-            self.log("BREACH läuft bereits.", Tone::Yellow);
+            self.log(t!("BREACH läuft bereits."), Tone::Yellow);
             return;
         }
         if self.participants.is_empty() {
             self.sfx(Sfx::Error);
             self.log(
-                "FEHLER: Keine Personas im Pool. Erst Teilnehmer erfassen.",
+                t!("FEHLER: Keine Personas im Pool. Erst Teilnehmer erfassen."),
                 Tone::Red,
             );
             return;
@@ -923,10 +902,7 @@ impl Engine {
         let wanted = self.cfg.winners.max(1) as usize;
         if wanted > self.participants.len() {
             self.log(
-                format!(
-                    "{wanted} Gewinner eingestellt, aber nur {} Teilnehmer – alle gewinnen.",
-                    self.participants.len()
-                ),
+                t!("{wanted} Gewinner eingestellt, aber nur {a1} Teilnehmer – alle gewinnen.", wanted = wanted, a1 = self.participants.len()),
                 Tone::Yellow,
             );
         }
@@ -952,12 +928,9 @@ impl Engine {
         );
         self.phase = Phase::Running;
         self.winners.clear();
-        self.set_status("MATRIX-RUN LÄUFT", Tone::Red);
+        self.set_status(t!("AUSLOSUNG LÄUFT"), Tone::Red);
         self.log(
-            format!(
-                "BREACH INITIALISIERT // {} Personas im Pool; Run-Dauer {duration:.1}s",
-                self.participants.len()
-            ),
+            t!("BREACH INITIALISIERT // {a1} Personas im Pool; Run-Dauer {duration}s", a1 = self.participants.len(), duration = format!("{:.1}", duration)),
             Tone::Red,
         );
         self.run = Some(ActiveRun {
@@ -996,24 +969,24 @@ impl Engine {
         }
         self.winners = winners;
         self.phase = Phase::Won;
-        self.set_status("BREACH ERFOLGREICH", Tone::Green);
+        self.set_status(t!("BREACH ERFOLGREICH"), Tone::Green);
         let count = self.participants.len();
         let many = self.winners.len() > 1;
         for (i, w) in self.winners.clone().iter().enumerate() {
             let prize = w.prize.as_ref().map(|p| p.label.clone());
             let head = if many {
-                format!("Gewinner {}: ", i + 1)
+                t!("Gewinner {n}: ", n = i + 1)
             } else {
-                "BREACH ERFOLGREICH! Gewinner: ".into()
+                t!("BREACH ERFOLGREICH! Gewinner: ").into()
             };
             let tail = prize
                 .as_ref()
-                .map(|p| format!(" – Preis: {p}"))
+                .map(|p| t!(" – Preis: {p}", p = p))
                 .unwrap_or_default();
             self.log(format!("{head}@{}{tail}", w.display), Tone::Yellow);
             if let Err(e) = self.db.add_history(&w.display, count, prize.as_deref()) {
                 self.log(
-                    format!("Verlauf konnte nicht gespeichert werden: {e}"),
+                    t!("Verlauf konnte nicht gespeichert werden: {e}", e = e),
                     Tone::Red,
                 );
             }
@@ -1035,7 +1008,7 @@ impl Engine {
                 .unwrap_or_default();
             let mut m = tpl.replace("{winner}", &w.login).replace("{prize}", &prize);
             if !prize.is_empty() && !tpl.contains("{prize}") {
-                m.push_str(&format!(" Preis: {prize}"));
+                m.push_str(&t!(" Preis: {prize}", prize = prize));
             }
             m
         };
@@ -1051,7 +1024,7 @@ impl Engine {
                 .collect();
             for chunk in names.chunks(15) {
                 self.sender
-                    .send(format!("🎉 Gewinner: {}", chunk.join(", ")));
+                    .send(t!("🎉 Gewinner: {list}", list = chunk.join(", ")));
             }
         }
     }
@@ -1069,7 +1042,7 @@ impl Engine {
         }
         self.cfg.winners = n;
         if let Err(e) = config::save(&config::config_path(), &self.cfg) {
-            self.log(format!("Gewinnerzahl nicht gespeichert: {e}"), Tone::Red);
+            self.log(t!("Gewinnerzahl nicht gespeichert: {e}", e = e), Tone::Red);
         }
         self.dirty = true;
     }
@@ -1079,7 +1052,7 @@ impl Engine {
         self.cfg.prizes = prizes;
         self.cfg.prize_text = text;
         if let Err(e) = config::save(&config::config_path(), &self.cfg) {
-            self.log(format!("Preise nicht gespeichert: {e}"), Tone::Red);
+            self.log(t!("Preise nicht gespeichert: {e}", e = e), Tone::Red);
         }
         self.dirty = true;
     }
@@ -1097,9 +1070,9 @@ impl Engine {
         self.won_at = None;
         self.auto_deadline = None;
         self.log.clear();
-        self.set_status("BEREIT / TEILNAHME GESCHLOSSEN", Tone::Cyan);
+        self.set_status(t!("BEREIT / TEILNAHME GESCHLOSSEN"), Tone::Cyan);
         self.log(
-            "System zurückgesetzt. Pool geleert; Entries geschlossen.",
+            t!("System zurückgesetzt. Pool geleert; Entries geschlossen."),
             Tone::Yellow,
         );
     }
@@ -1168,20 +1141,14 @@ impl Engine {
             }
         }
         if let Some(th) = warn {
-            self.sender.send(format!(
-                "⏱ Noch {th} Sekunden! Teilnahme mit {}.",
-                self.active_keyword
-            ));
+            self.sender.send(t!("⏱ Noch {th} Sekunden! Teilnahme mit {a1}.", th = th, a1 = self.active_keyword));
         }
         if remaining <= 0.0 {
             self.cancel_timer(true);
             if self.participants.is_empty() {
-                self.sender.send(format!(
-                    "⏱ Giveaway beendet: keine Teilnehmer. Schreibe beim nächsten Mal {}.",
-                    self.active_keyword
-                ));
+                self.sender.send(t!("⏱ Giveaway beendet: keine Teilnehmer. Schreibe beim nächsten Mal {a1}.", a1 = self.active_keyword));
                 self.log(
-                    "Countdown abgelaufen; keine Teilnehmer. Giveaway sauber beendet.",
+                    t!("Countdown abgelaufen; keine Teilnehmer. Giveaway sauber beendet."),
                     Tone::Yellow,
                 );
                 self.phase = Phase::Ready;
@@ -1190,7 +1157,7 @@ impl Engine {
             }
             self.sender.send(self.cfg.close_message.clone());
             self.log(
-                "Countdown abgelaufen; automatischer Matrix-Run startet.",
+                t!("Countdown abgelaufen; die Auslosung startet automatisch."),
                 Tone::Red,
             );
             self.start_breach_inner();
@@ -1264,76 +1231,23 @@ impl Engine {
         let display = self.display_name(&name);
         self.sfx(Sfx::Join);
         self.log(
-            format!("PERSONA ERFASST: @{display} [{}]", self.participants.len()),
+            t!("PERSONA ERFASST: @{display} [{a1}]", display = display, a1 = self.participants.len()),
             Tone::Cyan,
         );
         if display != name {
-            self.sender.send(format!("@{name} ist dabei."));
+            self.sender.send(t!("@{name} ist dabei.", name = name));
         }
         self.dirty = true;
     }
 
     fn handle_chat(&mut self, user: String, msg: String) {
         let msg = msg.trim().to_string();
-        if let Some((twitch, ign)) = esi::parse_eve2twitch_message(&msg) {
-            let bot = clean_login(&self.cfg.eve2twitch_bot_name);
-            if bot.is_empty() || user == bot {
-                match self.db.upsert_user(&NewUser {
-                    twitch_login: twitch.clone(),
-                    eve_character_name: Some(ign.clone()),
-                    source: Some("eve2twitch-chat".into()),
-                    ..Default::default()
-                }) {
-                    Ok(()) => {
-                        self.log(
-                            format!("EVE-Zuordnung übernommen: @{twitch} // {ign}"),
-                            Tone::Cyan,
-                        );
-                        self.resolve_id(twitch.clone(), ign.clone());
-                    }
-                    Err(e) => self.log(format!("EVE-Zuordnung fehlgeschlagen: {e}"), Tone::Red),
-                }
-                self.refresh_igns();
-                return;
-            }
-        }
         let lower = msg.to_lowercase();
         if lower == self.active_keyword.to_lowercase() {
             if self.phase != Phase::Open {
                 return;
             }
-            let api = self.cfg.eve_api_url.trim().to_string();
-            let key = self.cfg.eve_api_key.trim().to_string();
-            if self.cfg.eve_enabled
-                && !api.is_empty()
-                && !key.is_empty()
-                && self.db.get_user(&user).is_none()
-            {
-                let tx = self.tx.clone();
-                let db = self.db.clone();
-                std::thread::spawn(move || {
-                    let mut ign = None;
-                    if let Some(info) = esi::lookup_eve2twitch(&api, &key, &user) {
-                        if db
-                            .upsert_user(&NewUser {
-                                twitch_login: user.clone(),
-                                eve_character_name: Some(info.name.clone()),
-                                eve_character_id: Some(info.id),
-                                corp_ticker: info.corp,
-                                alliance_ticker: info.alliance,
-                                source: Some("eve2twitch-api".into()),
-                                ..Default::default()
-                            })
-                            .is_ok()
-                        {
-                            ign = Some(info.name);
-                        }
-                    }
-                    let _ = tx.send(Inbound::JoinReady { login: user, ign });
-                });
-            } else {
-                self.add_participant(&user);
-            }
+            self.add_participant(&user);
             return;
         }
         if let Some(g) = self.cfg.games.iter().find(|g| {
@@ -1413,7 +1327,7 @@ impl Engine {
         }
         if n > 0 {
             self.log(
-                format!("Suche Charakter-IDs für {n} Zuordnung(en) …"),
+                t!("Suche Charakter-IDs für {n} Zuordnung(en) …", n = n),
                 Tone::Cyan,
             );
         }
@@ -1423,12 +1337,12 @@ impl Engine {
     fn handle_eve_link(&mut self, login: String, name: String) {
         if !self.cfg.eve_enabled {
             self.sender
-                .send(format!("@{login} EVE-Verknüpfung ist derzeit deaktiviert."));
+                .send(t!("@{login} EVE-Verknüpfung ist derzeit deaktiviert.", login = login));
             return;
         }
         if esi::clean_name(&name).is_empty() {
             self.sender
-                .send(format!("@{login} Bitte einen EVE-Charakternamen angeben."));
+                .send(t!("@{login} Bitte einen EVE-Charakternamen angeben.", login = login));
             return;
         }
         let tx = self.tx.clone();
@@ -1481,9 +1395,9 @@ impl Engine {
                             if let Some(r) = reply {
                                 let _ = r.send(Ok(None));
                             }
-                            self.log("Dock: Einstellungen gespeichert", Tone::Dark);
+                            self.log(t!("Dock: Einstellungen gespeichert"), Tone::Dark);
                             if let Err(e) = self.apply_config(cfg) {
-                                self.log(format!("Einstellungen nicht übernommen: {e}"), Tone::Red);
+                                self.log(t!("Einstellungen nicht übernommen: {e}", e = e), Tone::Red);
                             }
                         }
                         Err(e) => {
@@ -1501,13 +1415,6 @@ impl Engine {
                         self.log(e, Tone::Red);
                     }
                 }
-                Inbound::JoinReady { login, ign } => {
-                    if let Some(i) = ign {
-                        self.eve_cache.insert(login.clone(), i);
-                        self.refresh_igns();
-                    }
-                    self.add_participant(&login);
-                }
                 Inbound::SsoCode { code, state } => self.sso_callback(code, state),
                 Inbound::SsoLogin(result) => match result {
                     Ok(login) => {
@@ -1515,19 +1422,19 @@ impl Engine {
                         self.cfg.eve_sso_character_id = Some(login.character_id);
                         self.cfg.eve_sso_character_name = login.character_name.clone();
                         if let Err(e) = config::save(&config::config_path(), &self.cfg) {
-                            self.log(format!("EVE-Anmeldung nicht gespeichert: {e}"), Tone::Red);
+                            self.log(t!("EVE-Anmeldung nicht gespeichert: {e}", e = e), Tone::Red);
                         }
                         self.log(
-                            format!("Mit EVE verbunden: {}", login.character_name),
+                            t!("Mit EVE verbunden: {a1}", a1 = login.character_name),
                             Tone::Green,
                         );
                         self.assets_version += 1;
                         self.start_asset_load(Some(login));
                     }
                     Err(e) => {
-                        self.assets_status = format!("Anmeldung fehlgeschlagen: {e}");
+                        self.assets_status = t!("Anmeldung fehlgeschlagen: {e}", e = e);
                         self.assets_version += 1;
-                        self.log(format!("EVE-Anmeldung fehlgeschlagen: {e}"), Tone::Red);
+                        self.log(t!("EVE-Anmeldung fehlgeschlagen: {e}", e = e), Tone::Red);
                     }
                 },
                 Inbound::Assets { result, refresh } => {
@@ -1538,20 +1445,16 @@ impl Engine {
                     }
                     match result {
                         Ok(rows) => {
-                            self.assets_status = format!(
-                                "{} Einträge geladen ({})",
-                                prize::fmt_qty(rows.len() as u64),
-                                chrono::Local::now().format("%H:%M")
-                            );
+                            self.assets_status = t!("{a1} Einträge geladen ({a2})", a1 = prize::fmt_qty(rows.len() as u64), a2 = chrono::Local::now().format("%H:%M"));
                             self.log(
-                                format!("EVE-Assets geladen: {} Einträge.", rows.len()),
+                                t!("EVE-Assets geladen: {a1} Einträge.", a1 = rows.len()),
                                 Tone::Cyan,
                             );
                             self.assets = rows;
                         }
                         Err(e) => {
-                            self.assets_status = format!("Laden fehlgeschlagen: {e}");
-                            self.log(format!("EVE-Assets nicht geladen: {e}"), Tone::Red);
+                            self.assets_status = t!("Laden fehlgeschlagen: {e}", e = e);
+                            self.log(t!("EVE-Assets nicht geladen: {e}", e = e), Tone::Red);
                         }
                     }
                     self.assets_version += 1;
@@ -1560,7 +1463,7 @@ impl Engine {
                 Inbound::IdResolved { login, info, error } => match info {
                     Some(info) => {
                         self.log(
-                            format!("EVE-Charakter-ID für @{login} ergänzt ({}).", info.id),
+                            t!("EVE-Charakter-ID für @{login} ergänzt ({a1}).", login = login, a1 = info.id),
                             Tone::Dark,
                         );
                         let card = self
@@ -1574,10 +1477,7 @@ impl Engine {
                         self.refresh_igns();
                     }
                     None => self.log(
-                        format!(
-                            "Charakter-ID für @{login} nicht gefunden: {}",
-                            error.unwrap_or_default()
-                        ),
+                        t!("Charakter-ID für @{login} nicht gefunden: {a1}", login = login, a1 = error.unwrap_or_default()),
                         Tone::Yellow,
                     ),
                 },
@@ -1590,13 +1490,13 @@ impl Engine {
                     self.update_busy = false;
                     match result {
                         Ok(Some(rel)) => {
-                            self.update_status = format!("Version {} verfügbar", rel.version);
+                            self.update_status = t!("Version {a1} verfügbar", a1 = rel.version);
                             if rel.asset.is_none() {
                                 self.update_status
-                                    .push_str(" (für dieses System kein Download)");
+                                    .push_str(&t!(" (für dieses System kein Download)"));
                             }
                             self.log(
-                                format!("Update verfügbar: v{} (installiert: v{}) – Einstellungen oder Dock → Aktualisieren", rel.version, update::VERSION),
+                                t!("Update verfügbar: v{a1} (installiert: v{a2}) – Einstellungen oder Dock → Aktualisieren", a1 = rel.version, a2 = update::VERSION),
                                 Tone::Magenta,
                             );
                             self.update = Some(rel);
@@ -1606,19 +1506,16 @@ impl Engine {
                             self.update_status = format!("Aktuell (v{})", update::VERSION);
                             if manual {
                                 self.log(
-                                    format!(
-                                        "Keine neuere Version – v{} ist aktuell.",
-                                        update::VERSION
-                                    ),
+                                    t!("Keine neuere Version – v{a1} ist aktuell.", a1 = update::VERSION),
                                     Tone::Green,
                                 );
                             }
                         }
                         Err(e) => {
-                            self.update_status = format!("Prüfung fehlgeschlagen: {e}");
+                            self.update_status = t!("Prüfung fehlgeschlagen: {e}", e = e);
                             if manual {
                                 self.log(
-                                    format!("Update-Prüfung fehlgeschlagen: {e}"),
+                                    t!("Update-Prüfung fehlgeschlagen: {e}", e = e),
                                     Tone::Yellow,
                                 );
                             }
@@ -1630,16 +1527,16 @@ impl Engine {
                     self.update_busy = false;
                     match res {
                         Ok(path) => {
-                            self.update_status = "Update installiert – Neustart …".into();
+                            self.update_status = t!("Update installiert – Neustart …").into();
                             self.log(
-                                "Update installiert – das Programm startet neu.",
+                                t!("Update installiert – das Programm startet neu."),
                                 Tone::Green,
                             );
                             self.restart_to = Some(path);
                         }
                         Err(e) => {
-                            self.update_status = format!("Update fehlgeschlagen: {e}");
-                            self.log(format!("Update fehlgeschlagen: {e}"), Tone::Red);
+                            self.update_status = t!("Update fehlgeschlagen: {e}", e = e);
+                            self.log(t!("Update fehlgeschlagen: {e}", e = e), Tone::Red);
                         }
                     }
                     self.dirty = true;
@@ -1648,20 +1545,15 @@ impl Engine {
                     if let Some(i) = ign {
                         self.eve_cache.insert(login.clone(), i.clone());
                         self.refresh_igns();
-                        self.log(format!("EVE-Daten für @{login} übernommen."), Tone::Cyan);
+                        self.log(t!("EVE-Daten für @{login} übernommen.", login = login), Tone::Cyan);
                         self.sender
-                            .send(format!("@{login} EVE-Verknüpfung gespeichert."));
+                            .send(t!("@{login} EVE-Verknüpfung gespeichert.", login = login));
                     } else {
                         self.log(
-                            format!(
-                                "EVE-Verknüpfung @{login} fehlgeschlagen: {}",
-                                error.unwrap_or_default()
-                            ),
+                            t!("EVE-Verknüpfung @{login} fehlgeschlagen: {a1}", login = login, a1 = error.unwrap_or_default()),
                             Tone::Yellow,
                         );
-                        self.sender.send(format!(
-                            "@{login} EVE-Verknüpfung fehlgeschlagen. Bitte Eingabe prüfen und erneut versuchen."
-                        ));
+                        self.sender.send(t!("@{login} EVE-Verknüpfung fehlgeschlagen. Bitte Eingabe prüfen und erneut versuchen.", login = login));
                     }
                 }
             }
@@ -1673,13 +1565,13 @@ impl Engine {
     /// Design wechseln und speichern.
     pub fn set_theme(&mut self, id: &str) -> Result<(), String> {
         if !themes::registry().list().iter().any(|(t, ..)| t == id) {
-            return Err(format!("Unbekanntes Design: {id}"));
+            return Err(t!("Unbekanntes Design: {id}", id = id));
         }
         let mut c = self.cfg.clone();
         c.theme = id.to_string();
         self.apply_config(c)?;
         let name = themes::registry().get(id).info.name.clone();
-        self.log(format!("Design: {name}"), Tone::Dark);
+        self.log(format!("Design: {name}", name = name), Tone::Dark);
         Ok(())
     }
 
@@ -1690,7 +1582,7 @@ impl Engine {
         for m in &msgs {
             self.log(m.clone(), Tone::Yellow);
         }
-        self.log(format!("Designs neu geladen: {n} verfügbar"), Tone::Dark);
+        self.log(t!("Designs neu geladen: {n} verfügbar", n = n), Tone::Dark);
         self.dirty = true;
     }
 
@@ -1791,7 +1683,7 @@ impl Engine {
                 if let Some(n) = winners {
                     self.set_winners(n);
                 }
-                self.log("Dock: START/STOP", Tone::Dark);
+                self.log(t!("Dock: START/STOP"), Tone::Dark);
                 self.toggle_entries(&keyword, &duration);
             }
             DockCmd::Breach {
@@ -1802,7 +1694,7 @@ impl Engine {
                 if let Some(n) = winners {
                     self.set_winners(n);
                 }
-                self.log("Dock: BREACH", Tone::Dark);
+                self.log(t!("Dock: BREACH"), Tone::Dark);
                 self.start_breach(&keyword, &hack);
             }
             DockCmd::Reset => self.reset(),
@@ -1810,7 +1702,7 @@ impl Engine {
                 let mut c = self.cfg.clone();
                 c.auto_enabled = enabled;
                 if let Err(e) = self.apply_config(c) {
-                    self.log(format!("Auto-Giveaway nicht umgeschaltet: {e}"), Tone::Red);
+                    self.log(t!("Auto-Giveaway nicht umgeschaltet: {e}", e = e), Tone::Red);
                     return Err(e);
                 }
             }
@@ -1873,10 +1765,10 @@ impl Engine {
             "hack_duration": c.hack_duration, "decker_name": c.decker_name, "sound": c.sound,
             "auto_enabled": c.auto_enabled, "auto_interval": c.auto_interval, "auto_winner_hold": c.auto_winner_hold,
             "open_message": c.open_message, "close_message": c.close_message, "win_message": c.win_message,
-            "eve_enabled": c.eve_enabled, "eve_command": c.eve_command, "eve_api_url": c.eve_api_url,
-            "eve_api_key_set": !c.eve_api_key.trim().is_empty(), "eve2twitch_bot_name": c.eve2twitch_bot_name,
+            "eve_enabled": c.eve_enabled, "eve_command": c.eve_command,
             "hide_eve_names": c.hide_eve_names, "start_in_tray": c.start_in_tray, "close_to_tray": c.close_to_tray,
             "overlay_show_open": c.overlay_show_open,
+            "language": c.language,
             "theme": self.theme_id(),
             "themes": themes::registry().list().into_iter()
                 .map(|(id, name, builtin)| serde_json::json!({"id": id, "name": name, "builtin": builtin}))
@@ -1969,29 +1861,36 @@ impl Engine {
         let giveaway = config::parse_duration(&new.timer_duration)?;
         if new.auto_enabled {
             let pause = config::parse_duration(&new.auto_interval)
-                .map_err(|e| format!("Auto-Giveaway-Pause: {e}"))?;
+                .map_err(|e| format!("Auto-Giveaway-Pause: {e}", e = e))?;
             if pause == 0 {
-                return Err("Auto-Giveaway: Pause muss größer als 0 sein".into());
+                return Err(t!("Auto-Giveaway: Pause muss größer als 0 sein").into());
             }
             if giveaway == 0 {
                 return Err(
-                    "Auto-Giveaway braucht eine Giveaway-Dauer größer als 0 (sonst endet es nie)"
+                    t!("Auto-Giveaway braucht eine Giveaway-Dauer größer als 0 (sonst endet es nie)")
                         .into(),
                 );
             }
         }
         if new.web_port == 0 {
-            return Err("Port muss 1–65535 sein".into());
+            return Err(t!("Port muss 1–65535 sein").into());
         }
         Ok(())
     }
 
-    pub fn apply_config(&mut self, new: Config) -> Result<(), String> {
+    pub fn apply_config(&mut self, mut new: Config) -> Result<(), String> {
+        if new.language != self.cfg.language {
+            // unveränderte Standard-Chattexte wechseln mit der Sprache
+            let target = new.language.clone();
+            new.language = self.cfg.language.clone();
+            new.switch_language(&target);
+        }
         self.validate_config(&new)?;
         let auto_changed = new.auto_enabled != self.cfg.auto_enabled
             || new.auto_interval != self.cfg.auto_interval;
+        let lang_changed = new.language != self.cfg.language;
         config::save(&config::config_path(), &new)
-            .map_err(|e| format!("Speichern fehlgeschlagen: {e}"))?;
+            .map_err(|e| t!("Speichern fehlgeschlagen: {e}", e = e))?;
         let restart_irc = new.channel != self.cfg.channel
             || new.bot_username != self.cfg.bot_username
             || new.oauth_token != self.cfg.oauth_token;
@@ -1999,6 +1898,16 @@ impl Engine {
             || new.decker() != self.cfg.decker()
             || self.overlay_url.is_empty();
         self.cfg = new;
+        if lang_changed {
+            // Programmtexte, Designs und Dock wechseln sofort die Sprache
+            crate::i18n::set_lang(&self.cfg.language);
+            for m in themes::registry().reload() {
+                self.log(m, Tone::Yellow);
+            }
+            if self.phase == Phase::Ready && self.auto_text().is_none() {
+                self.set_status(t!("BEREIT"), Tone::Cyan);
+            }
+        }
         if self.phase != Phase::Open && self.phase != Phase::Running {
             self.active_keyword = self.cfg.keyword_or_default();
         }
@@ -2028,17 +1937,14 @@ impl Engine {
             self.auto_deadline = None;
             if self.cfg.auto_enabled {
                 self.log(
-                    format!(
-                        "Auto-Giveaway aktiv: alle {} ein neues Giveaway.",
-                        self.cfg.auto_interval.trim()
-                    ),
+                    t!("Auto-Giveaway aktiv: alle {a1} ein neues Giveaway.", a1 = self.cfg.auto_interval.trim()),
                     Tone::Cyan,
                 );
             } else {
-                self.log("Auto-Giveaway ausgeschaltet.", Tone::Yellow);
+                self.log(t!("Auto-Giveaway ausgeschaltet."), Tone::Yellow);
             }
         }
-        self.log("Konfiguration gespeichert und übernommen.", Tone::Green);
+        self.log(t!("Konfiguration gespeichert und übernommen."), Tone::Green);
         self.dirty = true;
         Ok(())
     }
@@ -2091,11 +1997,8 @@ impl Engine {
         let a = self.auto_state();
         match a.state {
             "aus" => None,
-            "wartet" => Some(format!(
-                "nächstes Giveaway in {}",
-                config::format_clock(a.remaining)
-            )),
-            _ => Some("Giveaway läuft – danach beginnt der Countdown neu".into()),
+            "wartet" => Some(t!("nächstes Giveaway in {a1}", a1 = config::format_clock(a.remaining))),
+            _ => Some(t!("Giveaway läuft – danach beginnt der Countdown neu").into()),
         }
     }
 
@@ -2122,7 +2025,7 @@ impl Engine {
                     self.participant_set.clear();
                     self.winners.clear();
                     self.run_view = None;
-                    self.set_status("AUTO-GIVEAWAY: WARTET", Tone::Cyan);
+                    self.set_status(t!("AUTO-GIVEAWAY: WARTET"), Tone::Cyan);
                 }
             }
             Phase::Ready => match self.auto_deadline {
@@ -2132,12 +2035,9 @@ impl Engine {
                         .max(1);
                     self.auto_total = secs;
                     self.auto_deadline = Some(Instant::now() + Duration::from_secs(secs));
-                    self.set_status("AUTO-GIVEAWAY: WARTET", Tone::Cyan);
+                    self.set_status(t!("AUTO-GIVEAWAY: WARTET"), Tone::Cyan);
                     self.log(
-                        format!(
-                            "Auto-Giveaway: nächstes Giveaway in {}.",
-                            config::format_clock(secs as f64)
-                        ),
+                        t!("Auto-Giveaway: nächstes Giveaway in {a1}.", a1 = config::format_clock(secs as f64)),
                         Tone::Cyan,
                     );
                     self.dirty = true;
@@ -2150,7 +2050,7 @@ impl Engine {
                         _ => "5:00".to_string(),
                     };
                     let kw = self.active_keyword.clone();
-                    self.log("Auto-Giveaway startet.", Tone::Green);
+                    self.log(t!("Auto-Giveaway startet."), Tone::Green);
                     self.toggle_entries(&kw, &duration);
                 }
                 Some(d) => {
@@ -2183,12 +2083,12 @@ impl Engine {
     pub fn sso_begin(&mut self) -> Result<String, String> {
         if self.cfg.eve_sso_client_id.trim().is_empty() {
             return Err(
-                "Bitte zuerst die Client-ID deiner EVE-App eintragen und speichern.".into(),
+                t!("Bitte zuerst die Client-ID deiner EVE-App eintragen und speichern.").into(),
             );
         }
         if self.overlay.as_ref().and_then(|o| o.port).is_none() {
             return Err(
-                "Der Webserver läuft nicht – ohne ihn kommt die Anmeldung nicht zurück.".into(),
+                t!("Der Webserver läuft nicht – ohne ihn kommt die Anmeldung nicht zurück.").into(),
             );
         }
         let (url, pending) = sso::begin(
@@ -2197,9 +2097,9 @@ impl Engine {
             self.cfg.eve_sso_structures,
         );
         self.sso_pending = Some(pending);
-        self.assets_status = "Warte auf die Anmeldung im Browser …".into();
+        self.assets_status = t!("Warte auf die Anmeldung im Browser …").into();
         self.assets_version += 1;
-        self.log("EVE-Anmeldung im Browser gestartet.", Tone::Cyan);
+        self.log(t!("EVE-Anmeldung im Browser gestartet."), Tone::Cyan);
         Ok(url)
     }
 
@@ -2209,14 +2109,14 @@ impl Engine {
         match &self.sso_pending {
             None => {
                 self.log(
-                    "EVE-Anmeldung: Rückruf ohne laufende Anmeldung – bitte im Tool „Mit EVE verbinden“ klicken.",
+                    t!("EVE-Anmeldung: Rückruf ohne laufende Anmeldung – bitte im Tool „Mit EVE verbinden“ klicken."),
                     Tone::Yellow,
                 );
                 return;
             }
             Some(p) if p.state != state => {
                 self.log(
-                    "EVE-Anmeldung: Rückruf aus einem älteren Anmeldeversuch ignoriert – bitte den zuletzt geöffneten Browser-Tab verwenden.",
+                    t!("EVE-Anmeldung: Rückruf aus einem älteren Anmeldeversuch ignoriert – bitte den zuletzt geöffneten Browser-Tab verwenden."),
                     Tone::Yellow,
                 );
                 return;
@@ -2228,7 +2128,7 @@ impl Engine {
         };
         let client = self.cfg.eve_sso_client_id.clone();
         let tx = self.tx.clone();
-        self.assets_status = "Anmeldung wird abgeschlossen …".into();
+        self.assets_status = t!("Anmeldung wird abgeschlossen …").into();
         self.assets_version += 1;
         std::thread::spawn(move || {
             let _ = tx.send(Inbound::SsoLogin(sso::exchange(&client, &code, &pending)));
@@ -2242,7 +2142,7 @@ impl Engine {
         }
         self.cfg.eve_sso_structures = on;
         if let Err(e) = config::save(&config::config_path(), &self.cfg) {
-            self.log(format!("Einstellung nicht gespeichert: {e}"), Tone::Red);
+            self.log(t!("Einstellung nicht gespeichert: {e}", e = e), Tone::Red);
         }
     }
 
@@ -2257,7 +2157,7 @@ impl Engine {
         self.cfg.eve_sso_character_id = None;
         self.cfg.eve_sso_character_name.clear();
         if let Err(e) = config::save(&config::config_path(), &self.cfg) {
-            self.log(format!("Client-ID nicht gespeichert: {e}"), Tone::Red);
+            self.log(t!("Client-ID nicht gespeichert: {e}", e = e), Tone::Red);
         }
         self.assets_version += 1;
     }
@@ -2270,7 +2170,7 @@ impl Engine {
         self.assets.clear();
         self.assets_status = "Abgemeldet".into();
         self.assets_version += 1;
-        self.log("EVE-Anmeldung entfernt.", Tone::Yellow);
+        self.log(t!("EVE-Anmeldung entfernt."), Tone::Yellow);
     }
 
     /// Lädt die Assets neu (mit frischem Access-Token).
@@ -2283,12 +2183,12 @@ impl Engine {
             return;
         }
         if login.is_none() && !self.sso_connected() {
-            self.assets_status = "Nicht mit EVE verbunden".into();
+            self.assets_status = t!("Nicht mit EVE verbunden").into();
             self.assets_version += 1;
             return;
         }
         self.assets_loading = true;
-        self.assets_status = "Assets werden geladen …".into();
+        self.assets_status = t!("Assets werden geladen …").into();
         self.assets_version += 1;
         let client = self.cfg.eve_sso_client_id.clone();
         let refresh_token = self.cfg.eve_sso_refresh_token.clone();
@@ -2301,7 +2201,7 @@ impl Engine {
                         let r = Some(l.refresh_token.clone());
                         (Ok(l), r)
                     }
-                    Err(e) => (Err(format!("{e} – ggf. neu verbinden")), None),
+                    Err(e) => (Err(t!("{e} – ggf. neu verbinden", e = e)), None),
                 },
             };
             let result = login.and_then(|l| sso::load_assets(&l));
@@ -2743,7 +2643,6 @@ mod tests {
     fn dock_settings_and_secrets() {
         let base = Config {
             oauth_token: "geheim123".into(),
-            eve_api_key: "key456".into(),
             ..Default::default()
         };
         // Leeres Token-Feld lässt das Token unverändert
@@ -2798,8 +2697,7 @@ mod tests {
                 web_port: 19266,
                 sound: false,
                 oauth_token: "geheim123".into(),
-                eve_api_key: "key456".into(),
-                eve_sso_refresh_token: "refresh789".into(),
+                    eve_sso_refresh_token: "refresh789".into(),
                 eve_sso_character_id: Some(1),
                 ..Default::default()
             },

@@ -16,49 +16,50 @@ use std::sync::{Arc, OnceLock, RwLock};
 pub const DEFAULT_ID: &str = "shadowrun";
 const DEFAULT_JSON: &str = include_str!("../assets/themes/shadowrun/theme.json");
 
-/// Eingebaute Designs: (id, theme.json, theme.css)
-const BUILTIN: &[(&str, &str, &str)] = &[
-    (
-        "shadowrun",
-        DEFAULT_JSON,
-        include_str!("../assets/themes/shadowrun/theme.css"),
-    ),
-    (
-        "eve",
-        include_str!("../assets/themes/eve/theme.json"),
-        include_str!("../assets/themes/eve/theme.css"),
-    ),
-    (
-        "wow",
-        include_str!("../assets/themes/wow/theme.json"),
-        include_str!("../assets/themes/wow/theme.css"),
-    ),
-    (
-        "palia",
-        include_str!("../assets/themes/palia/theme.json"),
-        include_str!("../assets/themes/palia/theme.css"),
-    ),
-    (
-        "anime",
-        include_str!("../assets/themes/anime/theme.json"),
-        include_str!("../assets/themes/anime/theme.css"),
-    ),
+const DEFAULT_EN: &str = include_str!("../assets/themes/shadowrun/theme.en.json");
+
+/// Eingebautes Design: id, theme.json, theme.en.json, theme.css
+macro_rules! builtin {
+    ($id:literal) => {
+        (
+            $id,
+            include_str!(concat!("../assets/themes/", $id, "/theme.json")),
+            include_str!(concat!("../assets/themes/", $id, "/theme.en.json")),
+            include_str!(concat!("../assets/themes/", $id, "/theme.css")),
+        )
+    };
+}
+const BUILTIN: &[(&str, &str, &str, &str)] = &[
+    builtin!("shadowrun"),
+    builtin!("eve"),
+    builtin!("wow"),
+    builtin!("palia"),
+    builtin!("anime"),
 ];
 
-/// Standardtexte je Spielablauf (zwischen Standard-Design und Design gemischt).
-const GAME_JSON: &[(&str, &str)] = &[
-    ("datasite", include_str!("../assets/games/datasite.json")),
-    ("treasure", include_str!("../assets/games/treasure.json")),
-    ("riddle", include_str!("../assets/games/riddle.json")),
-    ("battle", include_str!("../assets/games/battle.json")),
-];
+/// Standardtexte je Spielablauf (zwischen Standard-Design und Design gemischt): (ablauf, deutsch, englisch)
+macro_rules! game {
+    ($g:literal) => {
+        (
+            $g,
+            include_str!(concat!("../assets/games/", $g, ".json")),
+            include_str!(concat!("../assets/games/", $g, ".en.json")),
+        )
+    };
+}
+const GAME_JSON: &[(&str, &str, &str)] = &[game!("datasite"), game!("treasure"), game!("riddle"), game!("battle")];
 
 fn game_json(game: &str) -> Option<&'static str> {
-    GAME_JSON.iter().find(|(g, _)| *g == game).map(|(_, j)| *j)
+    GAME_JSON.iter().find(|(g, ..)| *g == game).map(|(_, j, _)| *j)
+}
+
+fn game_json_en(game: &str) -> Option<&'static str> {
+    GAME_JSON.iter().find(|(g, ..)| *g == game).map(|(.., j)| *j)
 }
 
 const TEMPLATE_CSS: &str = include_str!("../assets/themes/_vorlage.css");
 const TEMPLATE_README: &str = include_str!("../assets/themes/LIESMICH.txt");
+const TEMPLATE_README_EN: &str = include_str!("../assets/themes/README.txt");
 
 /// Texte und Listen des Runs.
 #[derive(Debug, Clone, Default)]
@@ -142,23 +143,43 @@ pub struct Theme {
     pub css: String,
 }
 
-fn parse(id: &str, json: &str, css: &str, builtin: bool) -> Result<Theme, String> {
+/// Liest ein Design. Bei Englisch liegt über jeder Ebene (Standard, Ablauf, Design)
+/// ihre englische Fassung; was dort fehlt, bleibt deutsch.
+fn parse(id: &str, json: &str, json_en: Option<&str>, css: &str, builtin: bool) -> Result<Theme, String> {
+    let en = crate::i18n::is_en();
     let base: Value = serde_json::from_str(DEFAULT_JSON).map_err(|e| e.to_string())?;
-    let v: Value = serde_json::from_str(json).map_err(|e| format!("theme.json: {e}"))?;
+    let base_en: Option<Value> = if en { serde_json::from_str(DEFAULT_EN).ok() } else { None };
+    let mut v: Value = serde_json::from_str(json).map_err(|e| format!("theme.json: {e}", e = e))?;
+    let v_en: Option<Value> = match json_en.filter(|_| en) {
+        Some(j) => Some(serde_json::from_str(j).map_err(|e| format!("theme.en.json: {e}", e = e))?),
+        None => None,
+    };
+    // Name/Beschreibung aus der englischen Fassung
+    if let (Some(Value::Object(o)), Some(Value::Object(e))) = (Some(&mut v), v_en.as_ref()) {
+        for k in ["name", "description"] {
+            if let Some(x) = e.get(k) {
+                o.insert(k.into(), x.clone());
+            }
+        }
+    }
     let game = v.get("game").and_then(Value::as_str).unwrap_or("dice");
     if !crate::games::GAMES.contains(&game) {
-        return Err(format!(
-            "unbekannter Ablauf \"{game}\" (möglich: {})",
-            crate::games::GAMES.join(", ")
-        ));
+        return Err(t!("unbekannter Ablauf \"{game}\" (möglich: {a1})", game = game, a1 = crate::games::GAMES.join(", ")));
     }
     let game_v: Option<Value> = match game_json(game) {
-        Some(j) => Some(serde_json::from_str(j).map_err(|e| format!("Ablauf {game}: {e}"))?),
+        Some(j) => Some(serde_json::from_str(j).map_err(|e| format!("Ablauf {game}: {e}", game = game, e = e))?),
+        None => None,
+    };
+    let game_en: Option<Value> = match game_json_en(game).filter(|_| en) {
+        Some(j) => Some(serde_json::from_str(j).map_err(|e| t!("Ablauf {game} (en): {e}", game = game, e = e))?),
         None => None,
     };
     let layers: Vec<&Value> = std::iter::once(&base)
+        .chain(base_en.as_ref())
         .chain(game_v.as_ref())
+        .chain(game_en.as_ref())
         .chain([&v])
+        .chain(v_en.as_ref())
         .collect();
     let mut lexicon = Lexicon::default();
     let mut ui = Map::new();
@@ -253,12 +274,12 @@ impl Registry {
     pub fn reload(&self) -> Vec<String> {
         let mut map = BTreeMap::new();
         let mut msgs = vec![];
-        for (id, json, css) in BUILTIN {
-            match parse(id, json, css, true) {
+        for (id, json, json_en, css) in BUILTIN {
+            match parse(id, json, Some(json_en), css, true) {
                 Ok(t) => {
                     map.insert(id.to_string(), Arc::new(t));
                 }
-                Err(e) => msgs.push(format!("Eingebautes Design {id}: {e}")),
+                Err(e) => msgs.push(t!("Eingebautes Design {id}: {e}", id = id, e = e)),
             }
         }
         if let Some(dir) = &self.dir {
@@ -273,21 +294,20 @@ impl Registry {
                         continue;
                     }
                     if !valid_id(&id) {
-                        msgs.push(format!(
-                            "Design-Ordner „{id}“: Name nur aus a–z, 0–9, - und _"
-                        ));
+                        msgs.push(t!("Design-Ordner „{id}“: Name nur aus a–z, 0–9, - und _", id = id));
                         continue;
                     }
                     let Ok(json) = std::fs::read_to_string(path.join("theme.json")) else {
-                        msgs.push(format!("Design „{id}“: theme.json fehlt"));
+                        msgs.push(t!("Design „{id}“: theme.json fehlt", id = id));
                         continue;
                     };
                     let css = std::fs::read_to_string(path.join("theme.css")).unwrap_or_default();
-                    match parse(&id, &json, &css, false) {
+                    let json_en = std::fs::read_to_string(path.join("theme.en.json")).ok();
+                    match parse(&id, &json, json_en.as_deref(), &css, false) {
                         Ok(t) => {
                             map.insert(id, Arc::new(t));
                         }
-                        Err(err) => msgs.push(format!("Design „{id}“: {err}")),
+                        Err(err) => msgs.push(t!("Design „{id}“: {err}", id = id, err = err)),
                     }
                 }
             }
@@ -341,16 +361,20 @@ fn ensure_template(dir: &Path) {
     if std::fs::create_dir_all(&tpl).is_ok() {
         let json = DEFAULT_JSON.replacen("\"Shadowrun – Matrix-Run\"", "\"Mein Design\"", 1);
         write_new(tpl.join("theme.json"), &json);
+        let json_en = DEFAULT_EN.replacen("\"Shadowrun – Matrix Run\"", "\"My theme\"", 1);
+        write_new(tpl.join("theme.en.json"), &json_en);
         write_new(tpl.join("theme.css"), TEMPLATE_CSS);
     }
     let games = dir.join("_ablaeufe");
     if std::fs::create_dir_all(&games).is_ok() {
-        for (g, j) in GAME_JSON {
+        for (g, j, j_en) in GAME_JSON {
             write_new(games.join(format!("{g}.json")), j);
+            write_new(games.join(format!("{g}.en.json")), j_en);
         }
     }
-    // Anleitung immer aktuell halten
+    // Anleitungen immer aktuell halten
     let _ = std::fs::write(dir.join("LIESMICH.txt"), TEMPLATE_README);
+    let _ = std::fs::write(dir.join("README.txt"), TEMPLATE_README_EN);
 }
 
 #[cfg(test)]

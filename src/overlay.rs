@@ -78,9 +78,7 @@ impl OverlayServer {
                         }
                     }
                     let Some((listener, port)) = bound else {
-                        let _ = ready_tx.send(Err(format!(
-                            "Kein freier Port in {requested}..{end}: {last_err}"
-                        )));
+                        let _ = ready_tx.send(Err(t!("Kein freier Port in {requested}..{end}: {last_err}", requested = requested, end = end, last_err = last_err)));
                         return;
                     };
                     let _ = ready_tx.send(Ok(port));
@@ -89,6 +87,7 @@ impl OverlayServer {
                         .route("/test", get(index))
                         .route("/timer", get(timer))
                         .route("/api/theme", get(theme_info))
+                        .route("/i18n/en.json", get(i18n_en))
                         .route("/theme/{file}", get(theme_css))
                         .route("/ws", get(ws_handler))
                         .route("/api/demo", get(demo))
@@ -119,7 +118,7 @@ impl OverlayServer {
             Ok(_) => match ready_rx.recv_timeout(Duration::from_secs(5)) {
                 Ok(Ok(p)) => (Some(p), None),
                 Ok(Err(e)) => (None, Some(e)),
-                Err(_) => (None, Some("Webserver startet nicht (Timeout)".into())),
+                Err(_) => (None, Some(t!("Webserver startet nicht (Timeout)").into())),
             },
         };
         Self {
@@ -200,6 +199,14 @@ async fn theme_info(
 ) -> impl IntoResponse {
     let t = pick_theme(&st, q.id.as_deref());
     ([("Cache-Control", "no-store")], Json(t.info.clone()))
+}
+
+/// Wörterbuch Deutsch → Englisch für das Dock.
+async fn i18n_en() -> impl IntoResponse {
+    (
+        [("Content-Type", "application/json; charset=utf-8"), ("Cache-Control", "no-store")],
+        crate::i18n::EN_JSON,
+    )
 }
 
 /// `/theme/<id>.css` – Farben und Formen des Designs.
@@ -316,7 +323,7 @@ async fn demo(
             let ign = match theme.info.ign_game.as_str() {
                 "eve" => serde_json::Value::Null,
                 "wow" => serde_json::json!({"game": "wow", "label": "WoW-Charakter", "name": format!("{}-Blackrock", capitalize(w)),
-                    "sub": (["Stufe 80 Magier · <Nachtwache>", "Stufe 80 Paladin", "Stufe 72 Jäger · <Sturmwind Rangers>"][i % 3]), "portrait": null}),
+                    "sub": ([t!("Stufe 80 Magier · <Nachtwache>"), t!("Stufe 80 Paladin"), t!("Stufe 72 Jäger · <Sturmwind Rangers>")][i % 3]), "portrait": null}),
                 g => serde_json::json!({"game": g, "label": "Spielname", "name": capitalize(w), "sub": null, "portrait": null}),
             };
             serde_json::json!({
@@ -337,8 +344,9 @@ async fn demo(
 
 // ------------------------------------------------------------ Dock
 
-const FORBIDDEN: &str =
-    "Das Bedien-Dock ist nur auf dem PC erreichbar, auf dem das Giveaway-Tool läuft.";
+fn forbidden() -> String {
+    t!("Das Bedien-Dock ist nur auf dem PC erreichbar, auf dem das Giveaway-Tool läuft.")
+}
 
 /// Fremde Webseiten dürfen keine Befehle schicken: Origin muss lokal sein.
 fn local_origin(headers: &HeaderMap) -> bool {
@@ -352,7 +360,7 @@ fn local_origin(headers: &HeaderMap) -> bool {
 
 async fn dock_page(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> Response {
     if !addr.ip().is_loopback() {
-        return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
+        return (StatusCode::FORBIDDEN, forbidden()).into_response();
     }
     ([("Cache-Control", "no-store")], Html(DOCK_HTML)).into_response()
 }
@@ -364,7 +372,7 @@ async fn dock_ws(
     State(st): State<AppState>,
 ) -> Response {
     if !addr.ip().is_loopback() || !local_origin(&headers) {
-        return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
+        return (StatusCode::FORBIDDEN, forbidden()).into_response();
     }
     ws.on_upgrade(move |socket| client(socket, st.dock_rx))
         .into_response()
@@ -377,11 +385,11 @@ async fn dock_cmd(
     Json(cmd): Json<DockCmd>,
 ) -> Response {
     if !addr.ip().is_loopback() || !local_origin(&headers) {
-        return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
+        return (StatusCode::FORBIDDEN, forbidden()).into_response();
     }
     let (tx, rx) = mpsc::channel();
     if st.cmd.send(Inbound::Dock(cmd, Some(tx))).is_err() {
-        return (StatusCode::SERVICE_UNAVAILABLE, "Giveaway-Tool beendet").into_response();
+        return (StatusCode::SERVICE_UNAVAILABLE, t!("Giveaway-Tool beendet")).into_response();
     }
     // Auf die Antwort der Engine warten (läuft in eigenem Thread)
     let reply = tokio::task::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(10))).await;
@@ -394,7 +402,7 @@ async fn dock_cmd(
             .into_response(),
         _ => (
             StatusCode::GATEWAY_TIMEOUT,
-            Json(serde_json::json!({ "ok": false, "error": "Keine Antwort vom Giveaway-Tool" })),
+            Json(serde_json::json!({ "ok": false, "error": t!("Keine Antwort vom Giveaway-Tool") })),
         )
             .into_response(),
     }
@@ -408,7 +416,8 @@ struct CallbackQuery {
     error_description: Option<String>,
 }
 
-fn callback_page(title: &str, text: &str) -> Html<String> {
+fn callback_page(title: impl AsRef<str>, text: impl AsRef<str>) -> Html<String> {
+    let (title, text) = (title.as_ref(), text.as_ref());
     Html(format!(
         r#"<!doctype html><html lang="de"><meta charset="utf-8"><title>{title}</title>
 <body style="font:16px/1.5 system-ui,sans-serif;background:#14112e;color:#e8e3ff;display:grid;place-items:center;height:100vh;margin:0">
@@ -424,26 +433,26 @@ async fn eve_callback(
     axum::extract::Query(q): axum::extract::Query<CallbackQuery>,
 ) -> Response {
     if !addr.ip().is_loopback() {
-        return (StatusCode::FORBIDDEN, FORBIDDEN).into_response();
+        return (StatusCode::FORBIDDEN, forbidden()).into_response();
     }
     if let Some(err) = q.error {
         if err == "invalid_scope" {
             let _ = st.cmd.send(Inbound::Log(
-                "EVE-Anmeldung: Scope fehlt in der EVE-App (siehe Browserfenster).".into(),
+                t!("EVE-Anmeldung: Scope fehlt in der EVE-App (siehe Browserfenster).").into(),
                 crate::engine::Tone::Red,
             ));
             return callback_page(
-                "Scope fehlt in deiner EVE-App",
-                "Das Tool hat einen Scope angefragt, der in deiner App auf developers.eveonline.com nicht eingetragen ist. \
+                t!("Scope fehlt in deiner EVE-App"),
+                t!("Das Tool hat einen Scope angefragt, der in deiner App auf developers.eveonline.com nicht eingetragen ist. \
                  Entweder dort <b>esi-universe.read_structures.v1</b> ergänzen oder im Tool unter \
-                 Einstellungen → Preise den Haken „Strukturnamen“ entfernen. Danach erneut „Mit EVE verbinden“.",
+                 Einstellungen → Preise den Haken „Strukturnamen“ entfernen. Danach erneut „Mit EVE verbinden“."),
             )
             .into_response();
         }
         let detail = q.error_description.unwrap_or(err);
         return callback_page(
-            "Anmeldung abgebrochen",
-            &format!("EVE meldet: {}", html_escape(&detail)),
+            t!("Anmeldung abgebrochen"),
+            &t!("EVE meldet: {a1}", a1 = html_escape(&detail)),
         )
         .into_response();
     }
@@ -451,14 +460,14 @@ async fn eve_callback(
         (Some(code), Some(state)) => {
             let _ = st.cmd.send(Inbound::SsoCode { code, state });
             callback_page(
-                "Anmeldung empfangen",
-                "Das Giveaway-Tool lädt jetzt deine Assets. Du kannst dieses Fenster schließen.",
+                t!("Anmeldung empfangen"),
+                t!("Das Giveaway-Tool lädt jetzt deine Assets. Du kannst dieses Fenster schließen."),
             )
             .into_response()
         }
         _ => callback_page(
-            "Anmeldung unvollständig",
-            "Es kam kein Code von EVE zurück. Bitte im Tool erneut verbinden.",
+            t!("Anmeldung unvollständig"),
+            t!("Es kam kein Code von EVE zurück. Bitte im Tool erneut verbinden."),
         )
         .into_response(),
     }

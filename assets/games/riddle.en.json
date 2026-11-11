@@ -1,0 +1,76 @@
+{
+  "ui": {
+    "rd_guardian": "The guardian asks:",
+    "rd_riddle": "Riddle",
+    "rd_seals": "Seals",
+    "rd_hp": "Health",
+    "rd_runes": "Rune lock",
+    "rd_braziers": "Braziers",
+    "rd_order": "The whisper reveals the order:",
+    "rd_roll": "Need",
+    "register": "Rolling for loot",
+    "winner_note": "{count} adventurers rolled"
+  },
+  "texts": {
+    "phase.enter": "ENTRANCE",
+    "phase.riddle": "RIDDLE",
+    "phase.runes": "RUNE LOCK",
+    "phase.braziers": "BRAZIERS",
+    "phase.door": "VAULT",
+    "phase.fin": "NEED!",
+    "phase.done": "LOOT",
+    "rd.pt.enter": "{decker} stands before the gate: {host}",
+    "rd.pt.riddle": "The stone guardian awakens and asks a riddle",
+    "rd.pt.runes": "The runes must match the seal",
+    "rd.pt.braziers": "Light the braziers in the right order",
+    "rd.pt.door": "The vault gate opens!",
+    "fin.start": "Everyone rolls Need!",
+    "fin.left1": "The dice have fallen … 1 adventurer left",
+    "fin.left": "The dice have fallen … {n} adventurers left",
+    "pt.done": "Loot distributed – raid complete",
+    "rd.log.enter": "Torches flicker to life – {host}",
+    "rd.log.riddle": "The guardian speaks: “{q}”",
+    "rd.log.guess": "{decker} answers: “{a}”",
+    "rd.log.wrong": "Wrong! The guardian's eyes glow red",
+    "rd.log.trap": "{trap} (−{n} health)",
+    "rd.log.right": "Correct! The first seal shatters",
+    "rd.log.runes": "Five rune wheels grind in the stone",
+    "rd.log.overturn": "One notch too far – back!",
+    "rd.log.rune": "Rune {n} clicks into place",
+    "rd.log.runes_done": "The rune lock gives way – second seal broken",
+    "rd.log.whisper": "A whisper reveals the order of the braziers",
+    "rd.log.wrong_order": "Wrong order – all flames die out!",
+    "rd.log.braziers_done": "All braziers burn – third seal broken",
+    "rd.log.door": "The gate swings open – gold glitters in the torchlight",
+    "log.register": "{n} adventurers roll for the loot",
+    "log.win1": "EPIC LOOT // Winner: {list}",
+    "log.winN": "EPIC LOOT // {n} winners: {list}",
+    "log.and_more": "{list} and {n} more"
+  },
+  "lists": {
+    "dungeons": [
+      "Crypt of the Golden Crown",
+      "Ironfist's Treasury",
+      "The Sunken Halls",
+      "Tower of the Shadow Mage",
+      "Bastion of the Dragonbane",
+      "Vault of the Silver Order"
+    ],
+    "riddles": [
+      "The more you take, the more you leave behind.|Footsteps|Gold|Time|Breath",
+      "I have cities, but no houses; forests, but no trees; water, but no fish.|A map|A dream|A mirror|A painting",
+      "What gets wet while it dries?|A towel|A river|A cloud|A jug",
+      "I speak without a mouth and hear without ears. The wind brings me to life.|An echo|A ghost|A bell|A song",
+      "It has teeth, but it never bites.|A comb|A wolf|A dragon|A shark",
+      "What has a neck but no head?|A bottle|A swan|A knight|A giraffe",
+      "The more of it there is, the less you see.|Darkness|Light|Gold|Torches",
+      "The one who makes it doesn't tell. The one who takes it doesn't know. The one who knows it doesn't take it.|Counterfeit money|A secret|Poison|A curse"
+    ],
+    "traps": [
+      "fire|Flames shoot out of the walls!",
+      "darts|Poison darts hiss out of the cracks!",
+      "frost|Icy fog creeps across the floor!",
+      "rocks|Rocks tumble from the ceiling!"
+    ]
+  }
+}

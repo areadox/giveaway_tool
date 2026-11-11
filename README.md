@@ -1,10 +1,12 @@
-# Cyber Giveaway – Matrix-Run
+# Cyber Giveaway
 
-Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten per Chat-Befehl bei. Die Auslosung wird als Matrix-Run im Stil von *Shadowrun* (Pen & Paper) inszeniert: Ein Decker hackt sich in einen Host, setzt Marken, kämpft gegen IC, würfelt sichtbar mit W6-Pools und zieht am Ende die Gewinnerdatei heraus.
+*English below – see [English](#english).*
+
+Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten per Chat-Befehl bei. Die Auslosung läuft als kleines Spiel im Overlay – je nach Design als Matrix-Run im Stil von *Shadowrun* (Standard), als EVE-Data-Site, Schatzsuche, Rätsel-Gewölbe oder Anime-Bosskampf.
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.9** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
+Aktuelle Version: **0.0.14** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
 
 ## Funktionen
 
@@ -37,12 +39,12 @@ Aktuelle Version: **0.0.9** (Releases: siehe [GitHub](https://github.com/areadox
   - `http://localhost:8766/timer` kleine Timer-Anzeige (z. B. 520 × 110): Countdown bis zum nächsten Giveaway, offene Teilnahme mit Keyword, laufender Run, Gewinner; Vorschau mit `/timer?demo=1` (auch `&theme=…`). Bei ausgeschaltetem Auto-Giveaway ist sie nur während eines Giveaways sichtbar.
   - Wer nur die Timer-Anzeige nutzt, kann die große Teilnahme-Anzeige („Host-Zugang offen“) im Overlay abschalten (`overlay_show_open`, im Programm und im Dock). Matrix-Run und Gewinner erscheinen weiterhin.
   - `?view=graph` nur Host und Würfel, `?view=log` nur Charakterbogen und Protokoll, `?hide=1` blendet den Verbindungshinweis aus
+- **Sprache:** Deutsch oder Englisch (`language`, im Programm unter Einstellungen und im Dock). Gilt für Programmfenster, Dock, Overlay, Timer, alle Designs und Abläufe sowie die Standard-Chattexte; eigene Chattexte bleiben unverändert.
 - **Chat-Bot:** Start-, End- und Gewinnernachricht über einen Bot-Account (OAuth-Token).
 - **EVE-Online-Modus (optional):**
   - `!eve Charaktername` verknüpft einen Twitch-Account mit einem EVE-Charakter (Prüfung über ESI)
-  - Import über eve2twitch-API und Eve2Twitch-Bot-Nachrichten
   - Gewinnt ein registrierter Spieler, zeigt das Overlay sein EVE-Porträt mit Charaktername sowie Corp- und Allianz-Ticker; das Programmfenster zeigt das Porträt beim Gewinner und in der Datenbank
-  - Fehlende Charakter-IDs (z. B. aus dem Eve2Twitch-Chat) werden automatisch über ESI ergänzt, für ältere Einträge per Knopf „Fehlende IDs ergänzen“
+  - Fehlende Charakter-IDs werden automatisch über ESI ergänzt, für ältere Einträge per Knopf „Fehlende IDs ergänzen“
   - Optional lassen sich EVE-Namen und Porträts im Overlay verbergen (`hide_eve_names`), dann erscheint `[EVE-NAME]` (gilt auch für die Spielnamen anderer Spiele)
 - **Spielnamen für andere Spiele:** Zuschauer hinterlegen zusätzlich zu EVE ihren Namen für weitere Spiele, z. B. `!wow Thrall-Blackrock` oder `!palia Name`. Welcher Name beim Gewinner erscheint (Overlay, Programm, Dock), legt das Design fest: EVE und Shadowrun zeigen den EVE-Charakter, der WoW-Stil den WoW-Charakter, der Palia-Stil den Palia-Namen. Hat ein Zuschauer keinen passenden Namen, erscheint nur sein Twitch-Name. Weitere Spiele lassen sich unter *Einstellungen → Chat & Spiele* (oder im Dock) mit einer Zeile `kennung !befehl Bezeichnung` ergänzen; eigene Designs wählen das Spiel mit `"ign_game"` in der `theme.json`. Alle Spielnamen stehen unter *Einstellungen → Spielnamen* und lassen sich dort löschen.
 - **WoW mit Charakterbild:** Mit einem kostenlosen Blizzard-API-Zugang prüft `!wow Name-Realm` den Charakter und zeigt Bild, Stufe, Klasse und Gilde. Einrichtung: auf [develop.battle.net](https://develop.battle.net) anmelden → *API Access* → Client anlegen (Redirect-URL beliebig, z. B. `http://localhost`) → Client-ID und Secret unter *Einstellungen → Chat & Spiele* eintragen, Region wählen und optional einen Standard-Realm. Ohne Zugang wird der Name ungeprüft gespeichert. Das Secret erscheint nie im Dock.
@@ -82,7 +84,7 @@ Beides lässt sich unter *Einstellungen* bzw. im Dock abschalten (`start_in_tray
 | Knopf | Wirkung |
 |---|---|
 | **START** | öffnet die Teilnahme und startet den Countdown |
-| **STOP & AUSLOSEN** | schließt die Teilnahme und startet den Matrix-Run |
+| **STOP & AUSLOSEN** | schließt die Teilnahme und startet die Auslosung |
 | **BREACH** | startet den Run sofort mit dem aktuellen Pool |
 | **RESET** | leert Pool, Protokoll und Overlay |
 
@@ -104,7 +106,7 @@ Die Anmeldung wird als Refresh-Token in `config.json` gespeichert (wie das Twitc
 
 In OBS unter **Docks → Benutzerdefinierte Browser-Docks** einen Namen (z. B. „Giveaway“) und die URL `http://localhost:8766/dock` eintragen. Das Dock zeigt Status, Countdown, Teilnehmer, Gewinner (mit EVE-Porträt) und das Protokoll. Es enthält die Knöpfe START / STOP & AUSLOSEN, BREACH und RESET (RESET verlangt einen zweiten Klick) und den Schalter für das Auto-Giveaway (wird in `config.json` gespeichert). Unter „Giveaway-Werte“ lassen sich Keyword, Dauer und Run-Dauer für den nächsten Start anpassen.
 
-Unter **Einstellungen** stehen alle Einstellungen des Programms zur Verfügung (Twitch, Giveaway, Auto-Giveaway, Chat-Texte, EVE, Port und Tray-Verhalten), unter **Preise** die Preisbeschreibung, die Preisliste (Reihenfolge, Menge, eigene Preise) sowie EVE-Anmeldung, Asset-Suche und „+ Preis“. Die EVE-Anmeldung öffnet sich im normalen Browser. OAuth-Token und eve2twitch-Key zeigt das Dock nie an; dort eingetragen werden sie nur, wenn ein neuer Wert eingegeben wird. Die Datenbank-Zuordnungen und der Verlauf bleiben im Programmfenster.
+Unter **Einstellungen** stehen alle Einstellungen des Programms zur Verfügung (Twitch, Giveaway, Auto-Giveaway, Chat-Texte, EVE, Port und Tray-Verhalten), unter **Preise** die Preisbeschreibung, die Preisliste (Reihenfolge, Menge, eigene Preise) sowie EVE-Anmeldung, Asset-Suche und „+ Preis“. Die EVE-Anmeldung öffnet sich im normalen Browser. OAuth-Token und Blizzard-Secret zeigt das Dock nie an; dort eingetragen werden sie nur, wenn ein neuer Wert eingegeben wird. Die Datenbank-Zuordnungen und der Verlauf bleiben im Programmfenster.
 
 Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). Aufrufe aus dem Netzwerk und von fremden Webseiten werden abgelehnt; das Overlay selbst bleibt im Netzwerk erreichbar.
 
@@ -112,6 +114,7 @@ Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). 
 
 | Schlüssel | Bedeutung |
 |---|---|
+| `language` | `de` oder `en` – Sprache von Programm, Dock, Overlay und Designs |
 | `channel` | Twitch-Kanal, dessen Chat gelesen wird (anonym) |
 | `bot_username`, `oauth_token` | Account, der Chatnachrichten sendet |
 | `keyword` | Teilnahmebefehl |
@@ -138,13 +141,13 @@ Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). 
 | `eve_sso_refresh_token`, `eve_sso_character_id`, `eve_sso_character_name` | EVE-Anmeldung (wird vom Programm gesetzt) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`, `{prize}`). Fehlt `{prize}`, wird der Preis automatisch angehängt; bei mehreren Gewinnern geht je Gewinner eine Nachricht raus (ab 11 Gewinnern eine Sammelliste). |
 | `sound` | Soundeffekte im Programm |
-| `eve_enabled`, `eve_command`, `eve_api_url`, `eve_api_key`, `eve2twitch_bot_name` | EVE-Modus |
+| `eve_enabled`, `eve_command` | EVE-Modus (die früheren eve2twitch-Schlüssel werden beim Laden entfernt) |
 
 > Das OAuth-Token steht im Klartext in `config.json`. Die Datei deshalb nicht weitergeben oder ins Repository einchecken (sie steht in `.gitignore`).
 
 ## Eigene Designs
 
-Beim ersten Start legt das Programm neben der .exe den Ordner `themes/` an. Darin liegen eine vollständige Vorlage (`_vorlage/`) und eine Anleitung (`LIESMICH.txt`).
+Beim ersten Start legt das Programm neben der .exe den Ordner `themes/` an. Darin liegen eine vollständige Vorlage (`_vorlage/`) und eine Anleitung (`LIESMICH.txt`, englisch `README.txt`).
 
 1. `themes/_vorlage` kopieren und umbenennen, z. B. in `themes/meinspiel` (nur `a–z`, `0–9`, `-`, `_`).
 2. `theme.json` anpassen:
@@ -156,6 +159,7 @@ Beim ersten Start legt das Programm neben der .exe den Ordner `themes/` an. Dari
    - `texts`: alle Texte des Runs
    - `lists`: 7 Stationen, Ziele, Ausrüstung, Fundorte und optional Demo-Namen und Demo-Preise
 3. `theme.css` anpassen: Farben, Schrift, Rahmen und Würfel über CSS-Variablen; darunter sind beliebige weitere CSS-Regeln erlaubt.
+   - Für Englisch daneben `theme.en.json` mit den englischen Texten (gleicher Aufbau; was fehlt, kommt aus `theme.json`). Die englischen Ablauf-Texte liegen als `themes/_ablaeufe/<ablauf>.en.json` bei.
 4. Im Programm oder Dock auf **Designs neu laden** klicken und das Design auswählen.
 
 Alles ist optional, denn fehlende Einträge kommen aus dem Standard-Design. Es reicht also, nur ein paar Texte oder nur die Farben zu ändern. Platzhalter wie `{decker}`, `{host}`, `{n}` oder `{kw}` werden beim Run ersetzt; welche ein Text kennt, steht in der Vorlage. Fehler in eigenen Designs erscheinen im Log.
@@ -184,7 +188,8 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 | `src/overlay.rs` + `assets/overlay.html` | Webserver (axum/WebSocket) und OBS-Overlay |
 | `src/gui.rs` | Programmfenster (egui) |
 | `src/twitch.rs` | IRC-Leser (anonym) und Bot-Sender |
-| `src/esi.rs` | EVE-ESI und eve2twitch |
+| `src/esi.rs` | EVE-ESI (Charaktersuche) |
+| `src/i18n.rs`, `assets/i18n/en.json` | Sprache: deutscher Text als Schlüssel, englische Übersetzung (auch fürs Dock) |
 | `src/sso.rs` | EVE-Anmeldung (SSO/PKCE) und Asset-Abruf |
 | `src/prize.rs` | Preise und Zuordnung zu den Gewinnern |
 | `src/tray.rs` | Programm-Icon und Tray-Symbol (Windows) |
@@ -198,6 +203,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.14 | Sprachoption Englisch für alles (Programm, Dock, Overlay, Timer, Designs, Abläufe, Chattexte); eve2twitch-Anbindung entfernt (das Tool verknüpft EVE-Charaktere selbst per `!eve`); Überschrift neutral „Cyber Giveaway“ statt „Matrix-Run“ |
 | 0.0.13 | Spielnamen für andere Spiele (`!wow`, `!palia`, eigene Befehle) – das Design bestimmt, welcher Name beim Gewinner erscheint, EVE bleibt unverändert; WoW-Charaktere mit Bild, Stufe, Klasse und Gilde über die Blizzard-API; Update-Funktion: neue Version prüfen, herunterladen, austauschen und neu starten |
 | 0.0.12 | Mehr Animation in den Spiel-Abläufen: Partikel, bewegte Hintergründe (Sterne, Wolken, Fackeln, Blütenblätter), fließende Übergänge; EVE mit Virus-Orb, Treffern, Blitzen und Loot-Spew, Palia mit laufender Figur, Grab-Animation und aufspringender Kiste, WoW mit sprechendem Wächter, drehenden Runenrädern, Flammen und Tor, Anime mit Angriffen, Projektilen, Strahl und K.O.; Overlay ohne `color-mix()` (ältere OBS-Versionen) |
 | 0.0.11 | Jedes Design hat jetzt einen eigenen, zum Spiel passenden Ablauf: EVE – Data-Site hacken wie im Spiel, WoW-Stil – Rätsel, Runenschloss, Feuerschalen und Lootwurf, Palia-Stil – Schatzsuche mit Karte und Graben, Anime – Bosskampf; eigene Designs wählen den Ablauf mit `game` |
@@ -211,3 +217,14 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 | 0.0.3 | Auto-Giveaway mit einstellbarer Pause (in den Einstellungen ein- und ausschaltbar) und eigene Timer-Anzeige für OBS unter `/timer` |
 | 0.0.2 | EVE-Porträt mit Charaktername und Tickern im Gewinner-Banner und im Programmfenster; Charakter-IDs werden über ESI ergänzt; Namensschutz im Overlay als Schalter |
 | 0.0.1 | Erste Rust-Version: Matrix-Run im Shadowrun-Stil, neues Overlay, Verlauf-Tab, einstellbare Run-Dauer und Decker-Name |
+
+## English
+
+Cyber Giveaway is a Twitch giveaway tool with an OBS overlay. Viewers enter with a chat command; the draw plays out as a small game in the overlay (Shadowrun matrix run, EVE data site, Palia-style treasure hunt, WoW-style riddle vault or anime boss fight, depending on the theme).
+
+- **Language:** set *Sprache / Language* to *English* in the program settings or in the dock (config key `language`: `de`/`en`). Program window, dock, overlay, timer, all themes and the default chat messages switch at once; chat messages you changed yourself stay as they are.
+- **Setup:** download `CyberGiveaway.exe` from the [releases](https://github.com/areadox/giveaway_tool/releases), start it, enter your Twitch channel (and optionally a bot account with OAuth token) under Settings.
+- **OBS:** add `http://localhost:8766` as a browser source (overlay), `http://localhost:8766/timer` for the small timer display, and `http://localhost:8766/dock` as a custom browser dock.
+- **Game names:** `!eve Name` links an EVE character (portrait, corp and alliance via ESI), `!wow Name-Realm` a WoW character (via the Blizzard API), further games can be added under Settings → Chat & games.
+- **Custom themes:** copy `themes/_vorlage` next to the .exe; `theme.json` holds the German texts, `theme.en.json` the English ones. See `themes/README.txt`.
+- **Updates:** the program checks GitHub for new versions and can update itself (Settings → Updates or the dock).

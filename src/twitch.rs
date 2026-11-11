@@ -17,7 +17,7 @@ fn connect() -> std::io::Result<TcpStream> {
     let addr = (IRC_HOST, IRC_PORT)
         .to_socket_addrs()?
         .next()
-        .ok_or_else(|| std::io::Error::new(ErrorKind::NotFound, "IRC-Host nicht auflösbar"))?;
+        .ok_or_else(|| std::io::Error::new(ErrorKind::NotFound, t!("IRC-Host nicht auflösbar")))?;
     let s = TcpStream::connect_timeout(&addr, Duration::from_secs(10))?;
     s.set_read_timeout(Some(Duration::from_secs(1)))?;
     s.set_write_timeout(Some(Duration::from_secs(10)))?;
@@ -56,7 +56,7 @@ impl TwitchReader {
             .spawn(move || {
                 if !configured {
                     let _ = tx.send(Inbound::Log(
-                        "CHANNEL konfigurieren, um Twitch-IRC zu verbinden.".into(),
+                        t!("CHANNEL konfigurieren, um Twitch-IRC zu verbinden.").into(),
                         Tone::Yellow,
                     ));
                     return;
@@ -67,7 +67,7 @@ impl TwitchReader {
                             break;
                         }
                         let _ = tx.send(Inbound::Log(
-                            format!("IRC getrennt: {e}. Neuer Versuch in 5 s."),
+                            t!("IRC getrennt: {e}. Neuer Versuch in 5 s.", e = e),
                             Tone::Red,
                         ));
                         for _ in 0..50 {
@@ -86,9 +86,9 @@ impl TwitchReader {
     fn session(channel: &str, tx: &Sender<Inbound>, stop: &AtomicBool) -> std::io::Result<()> {
         let nick = format!("justinfan{}", rand::thread_rng().gen_range(10000..999999));
         let mut sock = connect()?;
-        sock.write_all(format!("NICK {nick}\r\nJOIN #{channel}\r\n").as_bytes())?;
+        sock.write_all(t!("NICK {nick}\r\nJOIN #{channel}\r\n", nick = nick, channel = channel).as_bytes())?;
         let _ = tx.send(Inbound::Log(
-            format!("Anonym mit #{channel} verbunden ({nick})."),
+            t!("Anonym mit #{channel} verbunden ({nick}).", channel = channel, nick = nick),
             Tone::Cyan,
         ));
         let mut pending: Vec<u8> = Vec::new();
@@ -98,7 +98,7 @@ impl TwitchReader {
                 Ok(0) => {
                     return Err(std::io::Error::new(
                         ErrorKind::ConnectionAborted,
-                        "IRC-Verbindung geschlossen",
+                        t!("IRC-Verbindung geschlossen"),
                     ))
                 }
                 Ok(n) => pending.extend_from_slice(&buf[..n]),
@@ -111,7 +111,7 @@ impl TwitchReader {
                 let raw: Vec<u8> = pending.drain(..pos + 2).collect();
                 let line = String::from_utf8_lossy(&raw[..raw.len() - 2]).to_string();
                 if let Some(rest) = line.strip_prefix("PING ") {
-                    sock.write_all(format!("PONG {rest}\r\n").as_bytes())?;
+                    sock.write_all(format!("PONG {rest}\r\n", rest = rest).as_bytes())?;
                     continue;
                 }
                 if let Some((user, msg)) = parse_privmsg(&line) {
@@ -184,10 +184,7 @@ impl TwitchSender {
             format!("oauth:{token}")
         };
         sock.write_all(
-            format!(
-                "PASS {token}\r\nNICK {}\r\nJOIN #{channel}\r\n",
-                bot.trim().to_lowercase()
-            )
+            t!("PASS {token}\r\nNICK {a1}\r\nJOIN #{channel}\r\n", token = token, a1 = bot.trim().to_lowercase(), channel = channel)
             .as_bytes(),
         )?;
         sock.set_read_timeout(Some(Duration::from_millis(50)))?;
@@ -209,12 +206,12 @@ impl TwitchSender {
                     let text = String::from_utf8_lossy(&buf[..n]);
                     for line in text.split("\r\n") {
                         if let Some(rest) = line.strip_prefix("PING ") {
-                            sock.write_all(format!("PONG {rest}\r\n").as_bytes())?;
+                            sock.write_all(format!("PONG {rest}\r\n", rest = rest).as_bytes())?;
                         } else if line.contains("Login authentication failed")
                             || line.contains("Improperly formatted auth")
                         {
                             let _ = log.send(Inbound::Log(
-                                "Bot-Login fehlgeschlagen: OAuth-Token prüfen.".into(),
+                                t!("Bot-Login fehlgeschlagen: OAuth-Token prüfen.").into(),
                                 Tone::Red,
                             ));
                         }
@@ -257,7 +254,7 @@ impl TwitchSender {
                         Ok(s) => sock = Some(s),
                         Err(e) => {
                             let _ = log.send(Inbound::Log(
-                                format!("Chat-Senden fehlgeschlagen: {e}"),
+                                t!("Chat-Senden fehlgeschlagen: {e}", e = e),
                                 Tone::Red,
                             ));
                             break;
@@ -266,7 +263,7 @@ impl TwitchSender {
                 }
                 let s = sock.as_mut().expect("socket");
                 let ok = Self::drain(s, &log).is_ok()
-                    && s.write_all(format!("PRIVMSG #{channel} :{safe}\r\n").as_bytes())
+                    && s.write_all(format!("PRIVMSG #{channel} :{safe}\r\n", channel = channel, safe = safe).as_bytes())
                         .is_ok();
                 if ok {
                     break;
@@ -274,7 +271,7 @@ impl TwitchSender {
                 sock = None;
                 if attempt == 1 {
                     let _ = log.send(Inbound::Log(
-                        "Chat-Nachricht konnte nicht gesendet werden.".into(),
+                        t!("Chat-Nachricht konnte nicht gesendet werden.").into(),
                         Tone::Red,
                     ));
                 }

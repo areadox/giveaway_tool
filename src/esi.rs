@@ -1,6 +1,5 @@
-//! EVE-Online-Anbindung: ESI-Charaktersuche, eve2twitch-API und Chat-Import.
+//! EVE-Online-Anbindung: ESI-Charaktersuche für „!eve Name“.
 
-use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -49,9 +48,9 @@ fn esi_error(e: ureq::Error) -> String {
                 .chars()
                 .take(240)
                 .collect();
-            format!("ESI HTTP {code}: {body}")
+            t!("ESI HTTP {code}: {body}", code = code, body = body)
         }
-        other => format!("ESI nicht erreichbar: {other}"),
+        other => t!("ESI nicht erreichbar: {other}", other = other),
     }
 }
 
@@ -70,7 +69,7 @@ fn ticker(agent: &ureq::Agent, url: &str) -> Option<String> {
 pub fn validate_character(name: &str) -> Result<EveInfo, String> {
     let clean = clean_name(name);
     if clean.is_empty() {
-        return Err("Bitte einen EVE-Charakternamen angeben, z.B. !eve Chribba.".into());
+        return Err(t!("Bitte einen EVE-Charakternamen angeben, z.B. !eve Chribba.").into());
     }
     let key = clean.to_lowercase();
     if let Some(hit) = cache().lock().ok().and_then(|c| c.get(&key).cloned()) {
@@ -88,11 +87,11 @@ pub fn validate_character(name: &str) -> Result<EveInfo, String> {
         .get("characters")
         .and_then(Value::as_array)
         .and_then(|a| a.first())
-        .ok_or("EVE-Charakter nicht gefunden")?;
+        .ok_or(t!("EVE-Charakter nicht gefunden"))?;
     let id = ch
         .get("id")
         .and_then(Value::as_i64)
-        .ok_or("EVE-Charakter nicht gefunden")?;
+        .ok_or(t!("EVE-Charakter nicht gefunden"))?;
     let real_name = ch
         .get("name")
         .and_then(Value::as_str)
@@ -145,76 +144,4 @@ pub fn percent_encode(s: &str) -> String {
         }
     }
     out
-}
-
-/// Fragt die eve2twitch-API nach dem Hauptcharakter eines Twitch-Logins.
-pub fn lookup_eve2twitch(base: &str, key: &str, login: &str) -> Option<EveInfo> {
-    let url = format!(
-        "{}/api/lookup/twitch/{}",
-        base.trim_end_matches('/'),
-        percent_encode(login)
-    );
-    let v: Value = agent()
-        .get(&url)
-        .set("X-API-Key", key)
-        .set("Accept", "application/json")
-        .call()
-        .ok()?
-        .into_json()
-        .ok()?;
-    let c = v.get("main_character")?;
-    let name = c.get("name")?.as_str()?.to_string();
-    let id = c.get("id")?.as_i64()?;
-    if name.is_empty() || id == 0 {
-        return None;
-    }
-    Some(EveInfo {
-        name,
-        id,
-        corp: c.get("corp").and_then(Value::as_str).map(str::to_string),
-        alliance: c
-            .get("alliance")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-    })
-}
-
-/// Erkennt Nachrichten des Eve2Twitch-Bots: `twitchname: IGN: "Charaktername"`.
-pub fn parse_eve2twitch_message(msg: &str) -> Option<(String, String)> {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| {
-        Regex::new(r#"(?i)^\s*(?:[A-Za-z0-9_]+\s*:\s*)?@?(?P<twitch>[A-Za-z0-9_]{1,25})\s*:\s*IGN\s*:?\s*["'“”‘’„‟«»](?P<ign>[^"'“”‘’„‟«»]+)["'“”‘’„‟«»]\s*$"#)
-            .expect("regex")
-    });
-    let c = re.captures(msg)?;
-    let twitch = c
-        .name("twitch")?
-        .as_str()
-        .trim()
-        .trim_start_matches('@')
-        .to_lowercase();
-    let ign = c.name("ign")?.as_str().trim().to_string();
-    if twitch.is_empty() || ign.is_empty() {
-        return None;
-    }
-    Some((twitch, ign))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn eve2twitch_parse() {
-        assert_eq!(
-            parse_eve2twitch_message(r#"areadox: IGN: "daulin""#),
-            Some(("areadox".into(), "daulin".into()))
-        );
-        assert_eq!(
-            parse_eve2twitch_message("bot: @Foo_1 : IGN „Some Pilot“"),
-            Some(("foo_1".into(), "Some Pilot".into()))
-        );
-        assert_eq!(parse_eve2twitch_message("hallo"), None);
-        assert_eq!(clean_name("  „Chribba“ "), "Chribba");
-    }
 }

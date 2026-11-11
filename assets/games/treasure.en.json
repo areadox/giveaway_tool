@@ -1,0 +1,95 @@
+{
+  "ui": {
+    "tr_clues": "Clues",
+    "tr_stamina": "Stamina",
+    "tr_heat": "Hunch",
+    "tr_tool": "Tool",
+    "register": "Tickets from the treasure chest",
+    "winner_note": "{count} villagers joined the search"
+  },
+  "texts": {
+    "phase.start": "SETTING OFF",
+    "phase.clues": "CLUES",
+    "phase.event": "OOPS!",
+    "phase.dig": "DIGGING",
+    "phase.found": "FOUND",
+    "phase.fin": "TICKETS",
+    "phase.done": "TREASURE",
+    "tr.pt.start": "{decker} sets off on a treasure hunt: {host}",
+    "tr.pt.clues": "Collecting clues on the map",
+    "tr.pt.event": "Something's happening …",
+    "tr.pt.dig": "It must be around here – dig!",
+    "tr.pt.found": "The shovel hits wood!",
+    "fin.start": "The chest is full of tickets!",
+    "fin.left1": "Drawing tickets … 1 ticket left",
+    "fin.left": "Drawing tickets … {n} tickets left",
+    "pt.done": "Treasure raised – what a day!",
+    "tr.log.start": "{decker} packs {tool} and heads out",
+    "tr.log.clue": "Clue {n}/3: “{clue}” – {dir}",
+    "tr.log.clues_done": "All clues collected – the search area is small now",
+    "tr.log.dig": "Found: {item} … {heat}",
+    "tr.log.found": "TREASURE CHEST FOUND!",
+    "tr.log.open": "The lid creaks – the chest opens",
+    "log.register": "{n} tickets are in the chest",
+    "log.win1": "TREASURE FOUND // Winner: {list}",
+    "log.winN": "TREASURE FOUND // {n} winners: {list}",
+    "log.and_more": "{list} and {n} more",
+    "tr.dir.n": "somewhere to the north",
+    "tr.dir.ne": "towards the northeast",
+    "tr.dir.e": "further east",
+    "tr.dir.se": "towards the southeast",
+    "tr.dir.s": "somewhere to the south",
+    "tr.dir.sw": "towards the southwest",
+    "tr.dir.w": "further west",
+    "tr.dir.nw": "towards the northwest",
+    "tr.heat.0": "freezing",
+    "tr.heat.1": "cold",
+    "tr.heat.2": "lukewarm",
+    "tr.heat.3": "warm!",
+    "tr.heat.4": "hot!",
+    "tr.heat.5": "FOUND!"
+  },
+  "lists": {
+    "places": [
+      "Kilima Village Square",
+      "Bahari Bay",
+      "Old Mill by the Brook",
+      "Lighthouse on the Cliff",
+      "Community Garden",
+      "Elderwood Grove"
+    ],
+    "tools": [
+      "the lucky shovel",
+      "the brass spade",
+      "grandma's old compass",
+      "the picnic backpack",
+      "the favorite watering can"
+    ],
+    "clues": [
+      "It's not where the ducks sleep",
+      "Follow the scent of cherry blossoms",
+      "Three steps behind the crooked tree",
+      "Where the evening shadow is longest",
+      "The bees know more than they hum",
+      "Under the stone that looks like a loaf of bread",
+      "Where the lantern lights up first at night"
+    ],
+    "events": [
+      "crow|A cheeky crow snaps at the clue – {decker} holds on tight!",
+      "rain|A short rain shower – everyone takes cover",
+      "bees|Bees! {decker} takes a wide detour",
+      "neighbor|A curious neighbor asks what {decker} is looking for",
+      "cat|A cat lies down right on the map"
+    ],
+    "finds": [
+      "an old boot",
+      "an earthworm",
+      "a seashell",
+      "a shiny pebble",
+      "a lost coin",
+      "a carrot",
+      "a button",
+      "a rusty fork"
+    ]
+  }
+}

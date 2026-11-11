@@ -4,7 +4,8 @@
     "bt_combo": "Combo",
     "bt_power": "Freundschaft",
     "register": "Die Schicksalskarten",
-    "winner_note": "{count} Mitstreiter haben ihre Kraft geschickt"
+    "winner_note": "{count} Mitstreiter haben ihre Kraft geschickt",
+    "bt_dodge": "Nachbild!"
   },
   "texts": {
     "phase.transform": "VERWANDLUNG",
