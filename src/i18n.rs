@@ -104,7 +104,7 @@ mod tests {
             {
                 continue;
             }
-            let src = std::fs::read_to_string(&path).unwrap();
+            let src = std::fs::read_to_string(&path).unwrap().replace("\r\n", "\n");
             let mut rest = src.as_str();
             while let Some(i) = rest.find("t!(\"") {
                 let before = rest[..i].chars().last();
