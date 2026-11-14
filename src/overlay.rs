@@ -2,7 +2,8 @@
 //!
 //! Routen: `/` Overlay, `/test` Demo-Modus, `/timer` Timer-Anzeige,
 //! `/ws` Live-Status, `/api/demo` Demo-Run, `/dock` Bedien-Dock für OBS
-//! (`/ws/dock`, `POST /api/dock`) – das Dock nur vom selben PC aus.
+//! (`/ws/dock`, `POST /api/dock`), `/chat` Chat-Dock (`/ws/chat`) – die Docks
+//! nur vom selben PC aus.
 
 use crate::engine::{DockCmd, Inbound};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -19,6 +20,7 @@ use tokio::sync::{oneshot, watch};
 pub const OVERLAY_HTML: &str = include_str!("../assets/overlay.html");
 pub const TIMER_HTML: &str = include_str!("../assets/timer.html");
 pub const DOCK_HTML: &str = include_str!("../assets/dock.html");
+pub const CHAT_HTML: &str = include_str!("../assets/chat.html");
 
 #[derive(Clone)]
 struct AppState {
@@ -93,6 +95,8 @@ impl OverlayServer {
                         .route("/api/demo", get(demo))
                         .route("/dock", get(dock_page))
                         .route("/ws/dock", get(dock_ws))
+                        .route("/chat", get(chat_page))
+                        .route("/ws/chat", get(chat_ws))
                         .route("/api/dock", axum::routing::post(dock_cmd))
                         .route("/eve/callback", get(eve_callback))
                         .with_state(AppState {
@@ -363,6 +367,56 @@ async fn dock_page(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> Response {
         return (StatusCode::FORBIDDEN, forbidden()).into_response();
     }
     ([("Cache-Control", "no-store")], Html(DOCK_HTML)).into_response()
+}
+
+async fn chat_page(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> Response {
+    if !addr.ip().is_loopback() {
+        return (StatusCode::FORBIDDEN, forbidden()).into_response();
+    }
+    ([("Cache-Control", "no-store")], Html(CHAT_HTML)).into_response()
+}
+
+async fn chat_ws(
+    ws: WebSocketUpgrade,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    if !addr.ip().is_loopback() || !local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, forbidden()).into_response();
+    }
+    ws.on_upgrade(chat_client).into_response()
+}
+
+/// Chatverlauf und danach jede neue Nachricht an das Chat-Dock
+async fn chat_client(mut socket: WebSocket) {
+    use tokio::sync::broadcast::error::RecvError;
+    let (snap, mut rx) = crate::chat::subscribe();
+    if socket.send(Message::Text(snap.into())).await.is_err() {
+        return;
+    }
+    let mut ping = tokio::time::interval(Duration::from_secs(25));
+    loop {
+        tokio::select! {
+            got = rx.recv() => {
+                let msg = match got {
+                    Ok(m) => m,
+                    // zu langsam gelesen: Verlauf neu schicken
+                    Err(RecvError::Lagged(_)) => crate::chat::subscribe().0,
+                    Err(RecvError::Closed) => break,
+                };
+                if socket.send(Message::Text(msg.into())).await.is_err() { break; }
+            }
+            incoming = socket.recv() => {
+                match incoming {
+                    None | Some(Err(_)) | Some(Ok(Message::Close(_))) => break,
+                    _ => {}
+                }
+            }
+            _ = ping.tick() => {
+                if socket.send(Message::Ping(Vec::new().into())).await.is_err() { break; }
+            }
+        }
+    }
 }
 
 async fn dock_ws(

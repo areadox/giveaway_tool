@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cyber Giveaway Chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14112e; --panel:#1b1740; --line:#3a3170; --field:#0f0c26;
+  --decker:#2ee6c5; --host:#ff3fa4; --gold:#ffd166; --glitch:#ff5a36; --edge:#a58bff;
+  --text:#e8e3ff; --muted:#9a93c9;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:500 14px/1.35 "Chakra Petch","Bahnschrift","Segoe UI",sans-serif}
+body{display:flex;flex-direction:column;gap:8px;padding:8px;min-width:220px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--edge);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none}
+.conn{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.conn::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--decker);flex:none}
+.conn.off::before{background:var(--glitch)}
+.conn.off{color:var(--glitch)}
+.conn b{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.feedwrap{position:relative;flex:1 1 auto;min-height:120px;border:1px solid var(--line);background:var(--field);border-radius:3px}
+.feed{position:absolute;inset:0;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere}
+.feed .empty{color:var(--muted);font-size:12px;margin:auto;text-align:center}
+.ln{font-size:13.5px;line-height:1.4}
+.ln time{color:#6b62a8;font-size:11px;margin-right:5px;font-variant-numeric:tabular-nums}
+.ln .nm{font-weight:700;cursor:pointer}
+.ln .nm:hover{text-decoration:underline}
+.ln.act .tx{font-style:italic}
+.ln.bot{background:rgba(46,230,197,.07);border-left:2px solid var(--decker);padding-left:5px;margin-left:-7px}
+.ln.hit{background:rgba(255,63,164,.10);border-left:2px solid var(--host);padding-left:5px;margin-left:-7px}
+.ln img.em{height:22px;vertical-align:middle;margin:-3px 1px}
+.bd{display:inline-block;font-size:9px;font-weight:700;line-height:13px;padding:0 3px;border-radius:2px;margin-right:3px;vertical-align:1px;color:#0e0b26}
+.bd.broadcaster{background:var(--host)}.bd.moderator{background:var(--decker)}.bd.vip{background:var(--edge)}.bd.subscriber,.bd.founder{background:var(--gold)}
+.more{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);border:1px solid var(--decker);background:var(--panel);color:var(--decker);border-radius:12px;padding:3px 12px;font-size:12px;cursor:pointer}
+
+.compose{flex:none;display:flex;flex-direction:column;gap:4px}
+.compose .bar{display:flex;gap:6px}
+.compose textarea{flex:1;min-width:0;resize:none;height:38px;background:var(--field);border:1px solid var(--line);border-radius:3px;padding:8px;font-size:14px;line-height:1.3}
+.compose textarea:focus{border-color:var(--edge)}
+.btn{border:1px solid var(--line);background:var(--panel);padding:8px 12px;border-radius:3px;cursor:pointer;font-weight:700}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.send{background:var(--decker);border-color:var(--decker);color:#0e0b26}
+.info{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}
+.info .err{color:var(--glitch)}
+.info .ok{color:var(--decker)}
+.warnbox{border:1px solid var(--gold);color:var(--gold);border-radius:3px;padding:6px 8px;font-size:12px}
+
+details.saved{flex:none;border:1px solid var(--line);border-radius:3px;background:var(--panel);display:flex;flex-direction:column}
+details.saved>summary{cursor:pointer;padding:7px 10px;font-weight:600;display:flex;justify-content:space-between;gap:8px}
+details.saved>summary span{color:var(--muted);font-weight:500;font-size:12px}
+.sbody{padding:0 8px 8px}
+.wide{width:100%;background:var(--field);border:1px solid var(--line);border-radius:2px;padding:5px 7px;font-size:13px}
+.list{max-height:38vh;overflow-y:auto;margin-top:6px;display:flex;flex-direction:column;gap:5px}
+.it{border:1px solid var(--line);background:var(--field);border-radius:3px;padding:6px 7px}
+.it.pin{border-color:rgba(255,209,102,.6)}
+.it.rep{border-left:3px solid var(--decker)}
+.it .tx{font-size:13px;cursor:pointer;overflow-wrap:anywhere}
+.it .tx:hover{color:#fff}
+.it .meta{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:5px;font-size:11px;color:var(--muted)}
+.it .meta .grow{flex:1}
+.it .meta .nx{color:var(--decker);font-variant-numeric:tabular-nums;white-space:nowrap}
+.it .meta>span{white-space:nowrap}
+.mini{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:2px;padding:2px 7px;font:inherit;font-size:12px;cursor:pointer}
+.mini:hover{border-color:var(--muted)}
+.mini.go{color:var(--decker);border-color:rgba(46,230,197,.5)}
+.mini.on{color:var(--gold);border-color:var(--gold)}
+.mini.armed{background:var(--glitch);border-color:var(--glitch);color:#fff}
+select.mini{padding:1px 4px}
+.opt{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
+.opt input{width:56px;background:var(--field);border:1px solid var(--line);border-radius:2px;padding:2px 5px;font-size:12px;color:var(--text)}
+.none{font-size:12px;color:var(--muted);padding:6px 2px}
+</style>
+</head>
+<body>
+<div class="top">
+  <div id="conn" class="conn off"><span>Verbinde …</span></div>
+</div>
+
+<div class="feedwrap">
+  <div id="feed" class="feed" aria-live="polite"><div class="empty">Noch keine Nachrichten.</div></div>
+  <button id="more" class="more" type="button" hidden>Neue Nachrichten ↓</button>
+</div>
+
+<div class="compose">
+  <div id="nobot" class="warnbox" hidden>Zum Senden in den Einstellungen Bot-Account und OAuth-Token eintragen.</div>
+  <div class="bar">
+    <textarea id="msg" maxlength="450" placeholder="Nachricht senden …" rows="1"></textarea>
+    <button id="send" class="btn send" type="button">Senden</button>
+  </div>
+  <div class="info"><span id="fb"></span><span id="cnt">0/450</span></div>
+</div>
+
+<details class="saved" id="savedbox" open>
+  <summary>Gespeicherte Nachrichten <span id="scount"></span></summary>
+  <div class="sbody">
+    <input id="q" class="wide" type="text" placeholder="Suchen …">
+    <div id="list" class="list"></div>
+    <div class="opt">
+      <span>Automatisch wiederholen erst nach mindestens</span>
+      <input id="minl" type="number" min="0" max="1000" step="1" value="0">
+      <span>neuen Chatnachrichten (0 = nur nach Zeit)</span>
+    </div>
+  </div>
+</details>
+
+<script>
+'use strict';
+// ---------- Sprache (Wörterbuch /i18n/en.json, Schlüssel = deutscher Text) ----------
+let DICT=null,LANG='de';
+const T=(de,vars)=>{let s=(LANG==='en'&&DICT&&DICT[de])||de;for(const [k,v] of Object.entries(vars||{}))s=s.split(`{${k}}`).join(v);return s;};
+async function setLang(l){
+  if(l===LANG)return;
+  if(LANG==='en'&&l!=='en'){location.reload();return;}
+  if(!DICT){try{DICT=await (await fetch('/i18n/en.json',{cache:'no-store'})).json();}catch(e){return;}}
+  LANG=l;document.documentElement.lang=l;
+  const tw=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let n;
+  while((n=tw.nextNode())){const t=n.nodeValue.trim();if(t&&DICT[t])n.nodeValue=n.nodeValue.replace(t,DICT[t]);}
+  document.querySelectorAll('[placeholder],[title]').forEach(el=>{for(const a of ['placeholder','title']){const v=el.getAttribute(a);if(v&&DICT[v])el.setAttribute(a,DICT[v]);}});
+  renderSaved();
+}
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clock=s=>{s=Math.max(0,Math.ceil(s));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;};
+const feed=$('feed');
+const MAX=300;
+let CH='', BOT='', SAVED=[], loadedAt=0, botOk=true;
+
+// ---------- Chat anzeigen ----------
+const PALETTE=['#ff6b6b','#4dabf7','#69db7c','#ffd43b','#da77f2','#ff922b','#3bc9db','#f783ac','#a9e34b','#748ffc'];
+function nameColor(c,user){
+  if(!c){let h=0;for(const ch of user)h=(h*31+ch.charCodeAt(0))>>>0;return PALETTE[h%PALETTE.length];}
+  const m=/^#?([0-9a-f]{6})$/i.exec(c);if(!m)return c;
+  let [r,g,b]=[0,2,4].map(i=>parseInt(m[1].slice(i,i+2),16));
+  const lum=(0.299*r+0.587*g+0.114*b);
+  if(lum<110){const k=(110-lum)/255+0.25;[r,g,b]=[r,g,b].map(v=>Math.round(v+(255-v)*k));}
+  return `rgb(${r},${g},${b})`;
+}
+const BADGE={broadcaster:'STREAM',moderator:'MOD',vip:'VIP',subscriber:'SUB',founder:'SUB'};
+function withEmotes(text,emotes){
+  const chars=Array.from(text);
+  if(!emotes)return esc(text);
+  const spots=[];
+  for(const part of emotes.split('/')){
+    const [id,ranges]=part.split(':');if(!id||!ranges)continue;
+    for(const r of ranges.split(',')){const [a,b]=r.split('-').map(Number);if(b>=a)spots.push([a,b,id]);}
+  }
+  spots.sort((x,y)=>x[0]-y[0]);
+  let out='',pos=0;
+  for(const [a,b,id] of spots){
+    if(a<pos||b>=chars.length)continue;
+    out+=esc(chars.slice(pos,a).join(''));
+    const name=chars.slice(a,b+1).join('');
+    out+=`<img class="em" alt="${esc(name)}" title="${esc(name)}" src="https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/1.0">`;
+    pos=b+1;
+  }
+  return out+esc(chars.slice(pos).join(''));
+}
+// Mitscrollen, solange man nicht selbst nach oben gescrollt hat
+let follow=true;
+function atBottom(){return feed.scrollHeight-feed.scrollTop-feed.clientHeight<40;}
+function toBottom(){feed.scrollTop=feed.scrollHeight;$('more').hidden=true;}
+function lineEl(l){
+  const d=document.createElement('div');
+  const isBot=BOT&&l.user===BOT.toLowerCase();
+  const mention=!!CH&&!isBot&&l.user!==CH.toLowerCase()&&l.text.toLowerCase().includes('@'+CH.toLowerCase());
+  d.className='ln'+(l.action?' act':'')+(isBot?' bot':'')+(mention?' hit':'');
+  if(l.id)d.dataset.id=l.id;
+  d.dataset.user=l.user;
+  const badges=(l.badges||[]).filter((b,i,a)=>!(b==='founder'&&a.includes('subscriber'))).map(b=>`<span class="bd ${b}">${BADGE[b]||b}</span>`).join('');
+  const col=nameColor(l.color,l.user);
+  const shown=l.name.toLowerCase()===l.user?l.name:`${l.name} (${l.user})`;
+  d.innerHTML=`<time>${esc(l.ts)}</time>${badges}<span class="nm" style="color:${col}" title="${esc(T('Antworten'))}">${esc(shown)}</span>${l.action?' ':': '}<span class="tx" ${l.action?`style="color:${col}"`:''}>${withEmotes(l.text,l.emotes)}</span>`;
+  d.querySelector('.nm').addEventListener('click',()=>{const t=$('msg');const tag='@'+l.name+' ';if(!t.value.startsWith(tag))t.value=tag+t.value;t.focus();count();});
+  return d;
+}
+function addLines(lines,reset){
+  const stick=reset||follow;
+  if(reset)follow=true;
+  if(reset)feed.innerHTML='';
+  const em=feed.querySelector('.empty');if(em&&lines.length)em.remove();
+  for(const l of lines){const el=lineEl(l);el.querySelectorAll('img').forEach(i=>i.addEventListener('load',()=>{if(follow)toBottom();}));feed.appendChild(el);}
+  while(feed.children.length>MAX)feed.firstElementChild.remove();
+  if(!feed.children.length)feed.innerHTML=`<div class="empty">${esc(T('Noch keine Nachrichten.'))}</div>`;
+  if(stick)toBottom();
+  else if(lines.length&&!reset)$('more').hidden=false;
+}
+feed.addEventListener('scroll',()=>{follow=atBottom();if(follow)$('more').hidden=true;});
+$('more').addEventListener('click',()=>{follow=true;toBottom();});
+new ResizeObserver(()=>{if(follow)toBottom();}).observe(feed);
+document.fonts&&document.fonts.ready.then(()=>{if(follow)toBottom();});
+
+function setConn(on){
+  const c=$('conn');c.classList.toggle('off',!on);
+  c.innerHTML=on?`<span>${esc(T('Chat'))}</span> <b>#${esc(CH||'')}</b>`:`<span>${esc(T('Keine Verbindung zum Twitch-Chat'))}</span>`;
+}
+let wsOk=false;
+function connect(){
+  const ws=new WebSocket(`ws://${location.host}/ws/chat`);
+  ws.onopen=()=>{wsOk=true;loadSaved();};
+  ws.onmessage=ev=>{
+    let m;try{m=JSON.parse(ev.data);}catch(e){return;}
+    if(m.type==='history'){if(m.channel)CH=m.channel;addLines(m.lines||[],true);setConn(m.connected);}
+    else if(m.type==='msg')addLines([m.line],false);
+    else if(m.type==='status'){if(m.channel)CH=m.channel;setConn(m.connected);}
+    else if(m.type==='delete'){const el=feed.querySelector(`[data-id="${CSS.escape(m.id)}"]`);if(el)el.remove();}
+    else if(m.type==='clear'){if(m.user)feed.querySelectorAll(`[data-user="${CSS.escape(m.user)}"]`).forEach(e=>e.remove());else addLines([],true);}
+    else if(m.type==='saved')loadSaved();
+  };
+  ws.onclose=()=>{wsOk=false;const c=$('conn');c.classList.add('off');c.innerHTML=`<span>${esc(T('Keine Verbindung – läuft das Giveaway-Tool?'))}</span>`;setTimeout(connect,2000);};
+}
+
+// ---------- Senden ----------
+async function api(body){
+  try{
+    const r=await fetch('/api/dock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||!j.ok)throw new Error((j&&j.error)||T('Fehler {n}',{n:r.status}));
+    return j.data;
+  }catch(e){throw new Error(e.message==='Failed to fetch'?T('Giveaway-Tool nicht erreichbar.'):e.message);}
+}
+function feedback(text,ok){const f=$('fb');f.textContent=text;f.className=ok?'ok':'err';clearTimeout(feedback.t);feedback.t=setTimeout(()=>{f.textContent='';},ok?2000:6000);}
+function count(){$('cnt').textContent=`${Array.from($('msg').value).length}/450`;}
+let busy=false, hist=-1;
+async function sendText(){
+  const t=$('msg').value.trim();if(!t||busy)return;
+  busy=true;$('send').disabled=true;
+  try{await api({cmd:'chatsend',text:t});$('msg').value='';hist=-1;count();feedback(T('Gesendet.'),true);}
+  catch(e){feedback(e.message,false);}
+  finally{busy=false;$('send').disabled=!botOk;$('msg').focus();}
+}
+async function resend(id,btn){
+  btn.disabled=true;
+  try{await api({cmd:'chatsend',id});feedback(T('Gesendet.'),true);}catch(e){feedback(e.message,false);}
+  finally{btn.disabled=false;}
+}
+$('send').addEventListener('click',sendText);
+$('msg').addEventListener('input',count);
+$('msg').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText();return;}
+  // Pfeil hoch/runter: zuletzt gesendete Nachrichten durchblättern
+  const recent=[...SAVED].sort((a,b)=>b.last_used.localeCompare(a.last_used));
+  if(e.key==='ArrowUp'&&(hist>=0||!$('msg').value)&&recent.length){e.preventDefault();hist=Math.min(hist+1,recent.length-1);$('msg').value=recent[hist].text;count();}
+  else if(e.key==='ArrowDown'&&hist>=0){e.preventDefault();hist--;$('msg').value=hist>=0?recent[hist].text:'';count();}
+});
+
+// ---------- Gespeicherte Nachrichten ----------
+const REPEATS=[0,2,5,10,15,20,30,45,60,90,120];
+async function loadSaved(){
+  try{
+    const d=await api({cmd:'chatsaved'});
+    SAVED=d.items||[];loadedAt=performance.now();
+    botOk=!!d.bot_ok;BOT=d.bot||'';CH=d.channel||CH;
+    $('nobot').hidden=botOk;$('send').disabled=!botOk;
+    if(document.activeElement!==$('minl'))$('minl').value=d.min_lines??0;
+    if(d.language)await setLang(d.language);
+    renderSaved();
+  }catch(e){}
+}
+const armed=new Map();
+function renderSaved(){
+  const q=$('q').value.trim().toLowerCase();
+  const items=SAVED.filter(m=>!q||m.text.toLowerCase().includes(q));
+  $('scount').textContent=SAVED.length?`(${SAVED.length})`:'';
+  const L=$('list');
+  if(!items.length){L.innerHTML=`<div class="none">${esc(SAVED.length?T('Nichts gefunden.'):T('Noch nichts gesendet. Gesendete Nachrichten erscheinen hier und lassen sich mit einem Klick wiederholen.'))}</div>`;return;}
+  const keep=L.scrollTop;
+  L.innerHTML='';
+  for(const m of items){
+    const d=document.createElement('div');
+    d.className='it'+(m.pinned?' pin':'')+(m.repeat_min?' rep':'');
+    const opts=REPEATS.map(n=>`<option value="${n}" ${n===m.repeat_min?'selected':''}>${n?T('alle {n} Min.',{n}):T('nicht wiederholen')}</option>`).join('')
+      +(REPEATS.includes(m.repeat_min)?'':`<option value="${m.repeat_min}" selected>${T('alle {n} Min.',{n:m.repeat_min})}</option>`);
+    d.innerHTML=`<div class="tx" title="${esc(T('In das Eingabefeld übernehmen'))}">${esc(m.text)}</div>
+      <div class="meta">
+        <button class="mini go" type="button" data-a="send" title="${esc(T('Jetzt erneut senden'))}">↻ ${esc(T('Senden'))}</button>
+        <button class="mini ${m.pinned?'on':''}" type="button" data-a="pin" title="${esc(m.pinned?T('Lösen'):T('Anheften'))}">★</button>
+        <select class="mini" data-a="rep" title="${esc(T('Automatisch wiederholen'))}">${opts}</select>
+        <span class="grow">${m.repeat_min?`<span class="nx" data-next="${m.id}"></span>`:''}</span>
+        <span>${esc(T('{n}× gesendet',{n:m.uses}))}</span>
+        <button class="mini" type="button" data-a="del" title="${esc(T('Löschen'))}">✕</button>
+      </div>`;
+    d.querySelector('.tx').addEventListener('click',()=>{$('msg').value=m.text;count();$('msg').focus();});
+    d.querySelector('[data-a=send]').addEventListener('click',e=>resend(m.id,e.currentTarget));
+    d.querySelector('[data-a=pin]').addEventListener('click',()=>api({cmd:'chatupdate',id:m.id,pinned:!m.pinned}).catch(e=>feedback(e.message,false)));
+    d.querySelector('[data-a=rep]').addEventListener('change',e=>api({cmd:'chatupdate',id:m.id,repeat:Number(e.target.value)}).catch(er=>feedback(er.message,false)));
+    const del=d.querySelector('[data-a=del]');
+    del.addEventListener('click',()=>{
+      if((armed.get(m.id)||0)>Date.now()){api({cmd:'chatdelete',id:m.id}).catch(e=>feedback(e.message,false));return;}
+      armed.set(m.id,Date.now()+3000);del.classList.add('armed');del.textContent=T('Löschen?');
+      setTimeout(()=>{del.classList.remove('armed');del.textContent='✕';},3000);
+    });
+    L.appendChild(d);
+  }
+  L.scrollTop=keep;
+  tickNext();
+}
+function tickNext(){
+  const dt=(performance.now()-loadedAt)/1000;
+  for(const m of SAVED){
+    if(!m.repeat_min||m.next_in==null)continue;
+    const el=document.querySelector(`[data-next="${m.id}"]`);if(!el)continue;
+    const left=m.next_in-dt;
+    el.textContent=left>0?T('nächste in {t}',{t:clock(left)}):T('wartet auf Chat');
+  }
+}
+setInterval(tickNext,1000);
+setInterval(()=>{if(wsOk&&SAVED.some(m=>m.repeat_min))loadSaved();},30000);
+$('q').addEventListener('input',renderSaved);
+$('minl').addEventListener('change',()=>{const n=Math.max(0,Math.min(1000,parseInt($('minl').value,10)||0));$('minl').value=n;api({cmd:'chatminlines',n}).then(()=>feedback(T('Gespeichert.'),true)).catch(e=>feedback(e.message,false));});
+
+connect();
+</script>
+</body>
+</html>

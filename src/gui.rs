@@ -498,6 +498,12 @@ impl eframe::App for GuiApp {
                                 .on_hover_text(
                                     t!("Bedien-Dock für OBS: Docks → Benutzerdefinierte Browser-Docks"),
                                 );
+                            ui.label(RichText::new("| CHAT:").color(CYAN).size(11.0));
+                            let chat = format!("{}/chat", e.overlay_url);
+                            ui.hyperlink_to(RichText::new(&chat).size(11.0), &chat)
+                                .on_hover_text(
+                                    t!("Chat-Dock für OBS: Chat lesen, über den Bot schreiben, gesendete Nachrichten wiederholen"),
+                                );
                         });
                     }
                 });

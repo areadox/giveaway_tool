@@ -56,6 +56,21 @@ impl GameName {
     }
 }
 
+/// Im Chat-Dock gesendete Nachricht (zum erneuten Senden)
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct SavedMsg {
+    pub id: i64,
+    pub text: String,
+    pub uses: i64,
+    pub last_used: String,
+    pub pinned: bool,
+    /// automatisch wiederholen alle n Minuten (0 = aus)
+    pub repeat_min: u32,
+}
+
+/// So viele nicht angeheftete Nachrichten ohne Wiederholung bleiben gespeichert.
+pub const SAVED_KEEP: usize = 100;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HistoryRow {
     pub winner: String,
@@ -154,6 +169,13 @@ impl Db {
                 name TEXT NOT NULL, info TEXT, updated_at TEXT NOT NULL,
                 PRIMARY KEY (twitch_login, game));",
         )?;
+        // Ab 0.0.15: gesendete Chatnachrichten des Chat-Docks
+        c.execute_batch(
+            "CREATE TABLE IF NOT EXISTS chat_saved (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL UNIQUE,
+                uses INTEGER NOT NULL DEFAULT 1, last_used TEXT NOT NULL,
+                pinned INTEGER NOT NULL DEFAULT 0, repeat_min INTEGER NOT NULL DEFAULT 0);",
+        )?;
         Ok(db)
     }
 
@@ -209,6 +231,80 @@ impl Db {
             "DELETE FROM game_names WHERE twitch_login=? COLLATE NOCASE AND game=?",
             params![clean_login(login), game.to_lowercase()],
         )?;
+        Ok(())
+    }
+
+    /// Gesendete Nachricht merken (gleicher Text zählt nur hoch).
+    pub fn chat_remember(&self, text: &str) -> Result<(), DbError> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Ok(());
+        }
+        let c = self.conn()?;
+        c.execute(
+            "INSERT INTO chat_saved(text,uses,last_used) VALUES(?,1,?)
+             ON CONFLICT(text) DO UPDATE SET uses=uses+1, last_used=excluded.last_used",
+            params![text, now_iso()],
+        )?;
+        // Alte, unwichtige Einträge aufräumen
+        c.execute(
+            "DELETE FROM chat_saved WHERE pinned=0 AND repeat_min=0 AND id NOT IN (
+                SELECT id FROM chat_saved WHERE pinned=0 AND repeat_min=0
+                ORDER BY last_used DESC LIMIT ?)",
+            params![SAVED_KEEP as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Angeheftete zuerst, dann die zuletzt gesendeten.
+    pub fn chat_saved(&self) -> Vec<SavedMsg> {
+        let Ok(c) = self.conn() else { return vec![] };
+        let Ok(mut st) = c.prepare(
+            "SELECT id, text, uses, last_used, pinned, repeat_min FROM chat_saved
+             ORDER BY pinned DESC, last_used DESC",
+        ) else {
+            return vec![];
+        };
+        st.query_map([], |r| {
+            Ok(SavedMsg {
+                id: r.get(0)?,
+                text: r.get(1)?,
+                uses: r.get(2)?,
+                last_used: r.get(3)?,
+                pinned: r.get::<_, i64>(4)? != 0,
+                repeat_min: r.get::<_, i64>(5)?.clamp(0, 1440) as u32,
+            })
+        })
+        .map(|it| it.filter_map(Result::ok).collect())
+        .unwrap_or_default()
+    }
+
+    pub fn chat_get(&self, id: i64) -> Option<SavedMsg> {
+        self.chat_saved().into_iter().find(|m| m.id == id)
+    }
+
+    pub fn chat_update(
+        &self,
+        id: i64,
+        pinned: Option<bool>,
+        repeat_min: Option<u32>,
+    ) -> Result<(), DbError> {
+        let c = self.conn()?;
+        if let Some(p) = pinned {
+            c.execute("UPDATE chat_saved SET pinned=? WHERE id=?", params![p as i64, id])?;
+        }
+        if let Some(r) = repeat_min {
+            c.execute(
+                "UPDATE chat_saved SET repeat_min=? WHERE id=?",
+                params![r.min(1440) as i64, id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn chat_delete(&self, id: i64) -> Result<(), DbError> {
+        self.conn()?
+            .execute("DELETE FROM chat_saved WHERE id=?", params![id])?;
         Ok(())
     }
 
@@ -377,6 +473,32 @@ mod tests {
         assert!(db.set_game_name("bob", "wow", "  ", None).is_err());
         db.delete_game_name("alice", "palia").unwrap();
         assert!(db.get_game_name("alice", "palia").is_none());
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn chat_saved() {
+        let p = std::env::temp_dir().join(format!("cg-chat-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        let db = Db::open(&p).unwrap();
+        db.chat_remember("Hallo Chat").unwrap();
+        db.chat_remember("Hallo Chat").unwrap();
+        db.chat_remember("Discord: x").unwrap();
+        let l = db.chat_saved();
+        assert_eq!(l.len(), 2);
+        let hallo = l.iter().find(|m| m.text == "Hallo Chat").unwrap().clone();
+        assert_eq!(hallo.uses, 2);
+        db.chat_update(hallo.id, Some(true), Some(15)).unwrap();
+        let first = &db.chat_saved()[0];
+        assert!(first.pinned);
+        assert_eq!(first.repeat_min, 15);
+        for i in 0..SAVED_KEEP + 5 {
+            db.chat_remember(&format!("m{i}")).unwrap();
+        }
+        // Angeheftete bleiben, der Rest wird begrenzt
+        assert_eq!(db.chat_saved().len(), SAVED_KEEP + 1);
+        db.chat_delete(hallo.id).unwrap();
+        assert!(db.chat_get(hallo.id).is_none());
         let _ = std::fs::remove_file(&p);
     }
 

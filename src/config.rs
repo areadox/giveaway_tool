@@ -61,6 +61,9 @@ pub struct Config {
     pub theme: String,
     /// Chatbefehle für Spielnamen anderer Spiele (EVE hat `eve_command`).
     pub games: Vec<GameCmd>,
+    /// Chat-Dock: automatische Wiederholung nur, wenn seit dem letzten Senden
+    /// mindestens so viele Nachrichten anderer im Chat kamen (0 = immer)
+    pub chat_repeat_min_lines: u32,
     /// Blizzard-API für WoW-Charaktere (develop.battle.net)
     pub wow_client_id: String,
     pub wow_client_secret: String,
@@ -148,6 +151,7 @@ impl Default for Config {
             language: "de".into(),
             theme: crate::themes::DEFAULT_ID.into(),
             games: default_games(),
+            chat_repeat_min_lines: 0,
             wow_client_id: String::new(),
             wow_client_secret: String::new(),
             wow_region: "eu".into(),

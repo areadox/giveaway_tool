@@ -6,7 +6,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.14** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
+Aktuelle Version: **0.0.15** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
 
 ## Funktionen
 
@@ -41,6 +41,7 @@ Aktuelle Version: **0.0.14** (Releases: siehe [GitHub](https://github.com/areado
   - `?view=graph` nur Host und Würfel, `?view=log` nur Charakterbogen und Protokoll, `?hide=1` blendet den Verbindungshinweis aus
 - **Sprache:** Deutsch oder Englisch (`language`, im Programm unter Einstellungen und im Dock). Gilt für Programmfenster, Dock, Overlay, Timer, alle Designs und Abläufe sowie die Standard-Chattexte; eigene Chattexte bleiben unverändert.
 - **Chat-Bot:** Start-, End- und Gewinnernachricht über einen Bot-Account (OAuth-Token).
+- **Chat-Dock für OBS** (`/chat`): Twitch-Chat live mitlesen und über den Bot schreiben. Jede gesendete Nachricht wird gespeichert und lässt sich per Klick erneut senden, anheften oder automatisch alle X Minuten wiederholen.
 - **EVE-Online-Modus (optional):**
   - `!eve Charaktername` verknüpft einen Twitch-Account mit einem EVE-Charakter (Prüfung über ESI)
   - Gewinnt ein registrierter Spieler, zeigt das Overlay sein EVE-Porträt mit Charaktername sowie Corp- und Allianz-Ticker; das Programmfenster zeigt das Porträt beim Gewinner und in der Datenbank
@@ -108,12 +109,23 @@ In OBS unter **Docks → Benutzerdefinierte Browser-Docks** einen Namen (z. B. �
 
 Unter **Einstellungen** stehen alle Einstellungen des Programms zur Verfügung (Twitch, Giveaway, Auto-Giveaway, Chat-Texte, EVE, Port und Tray-Verhalten), unter **Preise** die Preisbeschreibung, die Preisliste (Reihenfolge, Menge, eigene Preise) sowie EVE-Anmeldung, Asset-Suche und „+ Preis“. Die EVE-Anmeldung öffnet sich im normalen Browser. OAuth-Token und Blizzard-Secret zeigt das Dock nie an; dort eingetragen werden sie nur, wenn ein neuer Wert eingegeben wird. Die Datenbank-Zuordnungen und der Verlauf bleiben im Programmfenster.
 
+### Chat-Dock in OBS
+
+Ein zweites Browser-Dock mit der URL `http://localhost:8766/chat` (z. B. „Chat“) zeigt den Twitch-Chat live – mit Abzeichen (Streamer, Mod, VIP, Sub), Namensfarben und Emotes; Nachrichten, die dich erwähnen, sind markiert, von Moderatoren gelöschte verschwinden. Ein Klick auf einen Namen setzt `@Name` ins Eingabefeld.
+
+- **Schreiben:** Text eingeben, Enter sendet über den Bot-Account (Bot-Account und OAuth-Token in den Einstellungen nötig). `/me …` geht; andere Befehle wie `/ban` nimmt Twitch über IRC nicht an.
+- **Gemerkte Nachrichten:** Alles Gesendete landet unter „Gespeicherte Nachrichten“ (gleicher Text zählt nur hoch, „n× gesendet“). Klick auf den Text übernimmt ihn ins Eingabefeld zum Ändern, „↻ Senden“ schickt ihn sofort erneut. Pfeil hoch/runter im Eingabefeld blättert durch die zuletzt gesendeten Nachrichten.
+- **Anheften (★)** hält eine Nachricht oben in der Liste.
+- **Automatisch wiederholen:** je Nachricht alle 2 bis 120 Minuten; das Dock zeigt, wann sie das nächste Mal kommt. Optional erst, wenn seit dem letzten Mal mindestens n neue Chatnachrichten anderer kamen (`chat_repeat_min_lines`, 0 = nur nach Zeit) – so wird ein leerer Chat nicht zugespammt.
+- Gespeichert wird in `giveaway.db`; nicht angeheftete Nachrichten ohne Wiederholung werden auf die letzten 100 begrenzt.
+
 Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). Aufrufe aus dem Netzwerk und von fremden Webseiten werden abgelehnt; das Overlay selbst bleibt im Netzwerk erreichbar.
 
 ## Konfiguration (`config.json`)
 
 | Schlüssel | Bedeutung |
 |---|---|
+| `chat_repeat_min_lines` | Chat-Dock: automatische Wiederholung erst nach so vielen neuen Chatnachrichten (0 = nur nach Zeit) |
 | `language` | `de` oder `en` – Sprache von Programm, Dock, Overlay und Designs |
 | `channel` | Twitch-Kanal, dessen Chat gelesen wird (anonym) |
 | `bot_username`, `oauth_token` | Account, der Chatnachrichten sendet |
@@ -188,6 +200,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 | `src/overlay.rs` + `assets/overlay.html` | Webserver (axum/WebSocket) und OBS-Overlay |
 | `src/gui.rs` | Programmfenster (egui) |
 | `src/twitch.rs` | IRC-Leser (anonym) und Bot-Sender |
+| `src/chat.rs` + `assets/chat.html` | Chat-Dock: Chatverlauf, Tags/Emotes, Löschungen, ausgehende Nachrichten |
 | `src/esi.rs` | EVE-ESI (Charaktersuche) |
 | `src/i18n.rs`, `assets/i18n/en.json` | Sprache: deutscher Text als Schlüssel, englische Übersetzung (auch fürs Dock) |
 | `src/sso.rs` | EVE-Anmeldung (SSO/PKCE) und Asset-Abruf |
@@ -203,6 +216,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.15 | Chat-Dock für OBS (`/chat`): Twitch-Chat live lesen, über den Bot schreiben, gesendete Nachrichten merken, erneut senden, anheften und automatisch wiederholen |
 | 0.0.14 | Sprachoption Englisch für alles (Programm, Dock, Overlay, Timer, Designs, Abläufe, Chattexte); eve2twitch-Anbindung entfernt (das Tool verknüpft EVE-Charaktere selbst per `!eve`); Überschrift neutral „Cyber Giveaway“ statt „Matrix-Run“ |
 | 0.0.13 | Spielnamen für andere Spiele (`!wow`, `!palia`, eigene Befehle) – das Design bestimmt, welcher Name beim Gewinner erscheint, EVE bleibt unverändert; WoW-Charaktere mit Bild, Stufe, Klasse und Gilde über die Blizzard-API; Update-Funktion: neue Version prüfen, herunterladen, austauschen und neu starten |
 | 0.0.12 | Mehr Animation in den Spiel-Abläufen: Partikel, bewegte Hintergründe (Sterne, Wolken, Fackeln, Blütenblätter), fließende Übergänge; EVE mit Virus-Orb, Treffern, Blitzen und Loot-Spew, Palia mit laufender Figur, Grab-Animation und aufspringender Kiste, WoW mit sprechendem Wächter, drehenden Runenrädern, Flammen und Tor, Anime mit Angriffen, Projektilen, Strahl und K.O.; Overlay ohne `color-mix()` (ältere OBS-Versionen) |
@@ -225,6 +239,7 @@ Cyber Giveaway is a Twitch giveaway tool with an OBS overlay. Viewers enter with
 - **Language:** set *Sprache / Language* to *English* in the program settings or in the dock (config key `language`: `de`/`en`). Program window, dock, overlay, timer, all themes and the default chat messages switch at once; chat messages you changed yourself stay as they are.
 - **Setup:** download `CyberGiveaway.exe` from the [releases](https://github.com/areadox/giveaway_tool/releases), start it, enter your Twitch channel (and optionally a bot account with OAuth token) under Settings.
 - **OBS:** add `http://localhost:8766` as a browser source (overlay), `http://localhost:8766/timer` for the small timer display, and `http://localhost:8766/dock` as a custom browser dock.
+- **Chat dock:** `http://localhost:8766/chat` as a second custom browser dock shows the Twitch chat live and sends messages via the bot. Every sent message is saved and can be resent with one click, pinned, or repeated automatically every few minutes (optionally only after n new chat messages).
 - **Game names:** `!eve Name` links an EVE character (portrait, corp and alliance via ESI), `!wow Name-Realm` a WoW character (via the Blizzard API), further games can be added under Settings → Chat & games.
 - **Custom themes:** copy `themes/_vorlage` next to the .exe; `theme.json` holds the German texts, `theme.en.json` the English ones. See `themes/README.txt`.
 - **Updates:** the program checks GitHub for new versions and can update itself (Settings → Updates or the dock).

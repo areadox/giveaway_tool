@@ -251,6 +251,31 @@ pub enum DockCmd {
         login: String,
         game: String,
     },
+    /// Chat-Dock: Nachricht über den Bot senden (wird gespeichert)
+    ChatSend {
+        #[serde(default)]
+        text: String,
+        /// gespeicherte Nachricht erneut senden
+        #[serde(default)]
+        id: Option<i64>,
+    },
+    /// Chat-Dock: gespeicherte Nachrichten abrufen
+    ChatSaved,
+    /// Chat-Dock: anheften bzw. automatische Wiederholung (Minuten, 0 = aus)
+    ChatUpdate {
+        id: i64,
+        #[serde(default)]
+        pinned: Option<bool>,
+        #[serde(default)]
+        repeat: Option<u32>,
+    },
+    ChatDelete {
+        id: i64,
+    },
+    /// Chat-Dock: Mindestzahl an Chatnachrichten zwischen zwei Wiederholungen
+    ChatMinLines {
+        n: u32,
+    },
 }
 
 #[derive(Serialize)]
@@ -454,6 +479,13 @@ pub struct Engine {
     pub update_busy: bool,
     /// Update ist eingespielt: Programm neu starten (GUI bzw. Hauptschleife)
     pub restart_to: Option<std::path::PathBuf>,
+    /// Chat-Dock: gespeicherte Nachrichten (Kopie der Datenbank)
+    chat_saved: Vec<crate::db::SavedMsg>,
+    /// Anzahl Chatnachrichten anderer (nicht vom Bot) seit Programmstart
+    chat_seen: u64,
+    /// je Nachricht mit Wiederholung: zuletzt gesendet und Stand von `chat_seen`
+    chat_repeat: HashMap<i64, (Instant, u64)>,
+    chat_check: Instant,
 }
 
 fn stamp() -> String {
@@ -515,7 +547,12 @@ impl Engine {
             update_status: String::new(),
             update_busy: false,
             restart_to: None,
+            chat_saved: Vec::new(),
+            chat_seen: 0,
+            chat_repeat: HashMap::new(),
+            chat_check: Instant::now(),
         };
+        e.chat_saved = e.db.chat_saved();
         e.refresh_igns();
         e.log(
             t!("System initialisiert; Twitch-Reader wird gestartet."),
@@ -1241,6 +1278,9 @@ impl Engine {
     }
 
     fn handle_chat(&mut self, user: String, msg: String) {
+        if !user.eq_ignore_ascii_case(self.cfg.bot_username.trim()) {
+            self.chat_seen += 1;
+        }
         let msg = msg.trim().to_string();
         let lower = msg.to_lowercase();
         if lower == self.active_keyword.to_lowercase() {
@@ -1744,6 +1784,49 @@ impl Engine {
             DockCmd::ReloadThemes => self.reload_themes(),
             DockCmd::UpdateCheck => self.check_update(true),
             DockCmd::UpdateInstall => self.install_update()?,
+            DockCmd::ChatSend { text, id } => {
+                let text = match id {
+                    Some(id) => self
+                        .chat_saved
+                        .iter()
+                        .find(|m| m.id == id)
+                        .map(|m| m.text.clone())
+                        .ok_or_else(|| t!("Nachricht nicht gefunden"))?,
+                    None => text,
+                };
+                self.chat_send(&text)?;
+                return Ok(None);
+            }
+            DockCmd::ChatSaved => return Ok(Some(self.chat_view())),
+            DockCmd::ChatUpdate {
+                id,
+                pinned,
+                repeat,
+            } => {
+                self.db
+                    .chat_update(id, pinned, repeat)
+                    .map_err(|e| e.to_string())?;
+                if repeat.is_some() {
+                    // Wiederholung zählt ab jetzt
+                    self.chat_repeat.insert(id, (Instant::now(), self.chat_seen));
+                }
+                self.chat_reload();
+                return Ok(None);
+            }
+            DockCmd::ChatDelete { id } => {
+                self.db.chat_delete(id).map_err(|e| e.to_string())?;
+                self.chat_repeat.remove(&id);
+                self.chat_reload();
+                return Ok(None);
+            }
+            DockCmd::ChatMinLines { n } => {
+                let mut c = self.cfg.clone();
+                c.chat_repeat_min_lines = n.min(1000);
+                config::save(&config::config_path(), &c).map_err(|e| t!("Speichern fehlgeschlagen: {e}", e = e))?;
+                self.cfg = c;
+                crate::chat::saved_changed();
+                return Ok(None);
+            }
             DockCmd::GameNameDelete { login, game } => {
                 self.db
                     .delete_game_name(&login, &game)
@@ -1954,6 +2037,7 @@ impl Engine {
         self.tick_timer();
         self.tick_run();
         self.tick_auto();
+        self.tick_chat_repeat();
         if let Some(at) = self.win_sound_at {
             if Instant::now() >= at {
                 self.win_sound_at = None;
@@ -1963,6 +2047,102 @@ impl Engine {
             }
         }
         self.publish();
+    }
+
+    // ------------------------------------------------------------ Chat-Dock
+
+    fn chat_reload(&mut self) {
+        self.chat_saved = self.db.chat_saved();
+        let ids: HashSet<i64> = self.chat_saved.iter().filter(|m| m.repeat_min > 0).map(|m| m.id).collect();
+        self.chat_repeat.retain(|id, _| ids.contains(id));
+        crate::chat::saved_changed();
+    }
+
+    /// Text über den Bot senden und merken.
+    fn chat_send(&mut self, text: &str) -> Result<(), String> {
+        if !self.sender.enabled() {
+            return Err(t!("Zum Senden in den Einstellungen Bot-Account und OAuth-Token eintragen."));
+        }
+        let out = crate::chat::outgoing(text)?;
+        self.sender.send(out);
+        let text = text.replace(['\r', '\n'], " ").trim().to_string();
+        self.db.chat_remember(&text).map_err(|e| e.to_string())?;
+        if let Some(m) = self.db.chat_saved().into_iter().find(|m| m.text == text) {
+            if m.repeat_min > 0 {
+                self.chat_repeat.insert(m.id, (Instant::now(), self.chat_seen));
+            }
+        }
+        self.chat_reload();
+        Ok(())
+    }
+
+    /// Sekunden bis zur nächsten automatischen Wiederholung
+    fn chat_next_in(&self, m: &crate::db::SavedMsg) -> Option<f64> {
+        if m.repeat_min == 0 {
+            return None;
+        }
+        let since = self
+            .chat_repeat
+            .get(&m.id)
+            .map_or(0.0, |(at, _)| at.elapsed().as_secs_f64());
+        Some((m.repeat_min as f64 * 60.0 - since).max(0.0))
+    }
+
+    fn chat_view(&self) -> Value {
+        let items: Vec<Value> = self
+            .chat_saved
+            .iter()
+            .map(|m| {
+                let mut v = serde_json::to_value(m).unwrap_or(Value::Null);
+                v["next_in"] = self.chat_next_in(m).map_or(Value::Null, |s| serde_json::json!(s));
+                v
+            })
+            .collect();
+        serde_json::json!({
+            "items": items,
+            "bot_ok": self.sender.enabled(),
+            "bot": self.cfg.bot_username.trim(),
+            "channel": self.cfg.channel_clean(),
+            "min_lines": self.cfg.chat_repeat_min_lines,
+            "language": self.cfg.language,
+        })
+    }
+
+    /// Gespeicherte Nachrichten mit Wiederholung automatisch senden.
+    fn tick_chat_repeat(&mut self) {
+        if self.chat_check.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        self.chat_check = Instant::now();
+        if !self.sender.enabled() {
+            return;
+        }
+        let need = self.cfg.chat_repeat_min_lines as u64;
+        let seen = self.chat_seen;
+        let mut due = Vec::new();
+        for m in self.chat_saved.iter().filter(|m| m.repeat_min > 0) {
+            let (at, seen_then) = *self
+                .chat_repeat
+                .entry(m.id)
+                .or_insert((Instant::now(), seen));
+            if at.elapsed().as_secs() >= m.repeat_min as u64 * 60 && seen - seen_then >= need {
+                due.push(m.clone());
+            }
+        }
+        let sent = !due.is_empty();
+        for m in due {
+            if let Ok(out) = crate::chat::outgoing(&m.text) {
+                self.sender.send(out);
+                self.log(t!("Chat-Wiederholung: {text}", text = m.text), Tone::Dark);
+            }
+            self.chat_repeat.insert(m.id, (Instant::now(), seen));
+            let _ = self.db.chat_remember(&m.text);
+        }
+        if sent {
+            // Liste aktualisieren (Zähler, „zuletzt“)
+            self.chat_saved = self.db.chat_saved();
+            crate::chat::saved_changed();
+        }
     }
 
     // ------------------------------------------------------------ Auto-Giveaway
@@ -2285,6 +2465,7 @@ mod tests {
     #[test]
     fn full_giveaway_flow() {
         let dir = std::env::temp_dir().join(format!("cg-flow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("g.db")).unwrap();
         db.upsert_user(&NewUser {
@@ -2346,6 +2527,7 @@ mod tests {
     #[test]
     fn winner_portrait_in_overlay() {
         let dir = std::env::temp_dir().join(format!("cg-eve-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("g.db")).unwrap();
         db.upsert_user(&NewUser {
@@ -2388,6 +2570,7 @@ mod tests {
     #[test]
     fn auto_giveaway_cycle() {
         let dir = std::env::temp_dir().join(format!("cg-auto-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("g.db")).unwrap();
         let cfg = Config {
@@ -2444,6 +2627,7 @@ mod tests {
     #[test]
     fn auto_config_validation() {
         let dir = std::env::temp_dir().join(format!("cg-autov-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("g.db")).unwrap();
         let mut e = Engine::new(
@@ -2472,6 +2656,7 @@ mod tests {
     #[test]
     fn several_winners_with_prizes() {
         let dir = std::env::temp_dir().join(format!("cg-multi-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("g.db")).unwrap();
         let prizes = vec![
@@ -2563,6 +2748,7 @@ mod tests {
     #[test]
     fn game_names_per_theme() {
         let dir = std::env::temp_dir().join(format!("cg-ign-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let _ = std::fs::remove_file(dir.join("g.db"));
         let db = Db::open(&dir.join("g.db")).unwrap();
@@ -2690,6 +2876,7 @@ mod tests {
         assert!(matches!(cmd, DockCmd::Prizes { .. }));
 
         let dir = std::env::temp_dir().join(format!("cg-docks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("g.db")).unwrap();
         let mut e = Engine::new(
@@ -2717,6 +2904,7 @@ mod tests {
     #[test]
     fn open_panel_can_be_hidden() {
         let dir = std::env::temp_dir().join(format!("cg-open-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("g.db")).unwrap();
         let mut e = Engine::new(
@@ -2742,6 +2930,7 @@ mod tests {
     #[test]
     fn theme_switch() {
         let dir = std::env::temp_dir().join(format!("cg-theme-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("g.db")).unwrap();
         let mut e = Engine::new(
@@ -2792,5 +2981,59 @@ mod tests {
         assert_eq!(v["log"][0], "Gewinner: [EVE-NAME]!");
         assert!(v.get("ign").is_none());
         assert_eq!(v["winner"], "areadox");
+    }
+
+    #[test]
+    fn chat_dock_merkt_und_wiederholt() {
+        let cmd: DockCmd = serde_json::from_str(r#"{"cmd":"chatsend","id":3}"#).unwrap();
+        assert_eq!(cmd, DockCmd::ChatSend { text: String::new(), id: Some(3) });
+        let dir = std::env::temp_dir().join(format!("cg-chatdock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        // ohne Bot: Senden wird abgelehnt
+        let mut e = Engine::new(
+            Config { web_port: 19466, sound: false, channel: "areadox".into(), ..Default::default() },
+            db.clone(),
+        );
+        assert!(e.handle_dock(DockCmd::ChatSend { text: "hi".into(), id: None }).is_err());
+        e.shutdown();
+        let mut e = Engine::new(
+            Config {
+                web_port: 19476,
+                sound: false,
+                channel: "areadox".into(),
+                bot_username: "areadoxbot".into(),
+                oauth_token: "x".into(),
+                chat_repeat_min_lines: 2,
+                ..Default::default()
+            },
+            db,
+        );
+        e.handle_dock(DockCmd::ChatSend { text: "Discord: x".into(), id: None }).unwrap();
+        e.handle_dock(DockCmd::ChatSend { text: "/me winkt".into(), id: None }).unwrap();
+        assert!(e.handle_dock(DockCmd::ChatSend { text: "/ban a".into(), id: None }).is_err());
+        let id = e.chat_saved.iter().find(|m| m.text == "Discord: x").unwrap().id;
+        e.handle_dock(DockCmd::ChatSend { text: String::new(), id: Some(id) }).unwrap();
+        assert_eq!(e.chat_saved.iter().find(|m| m.id == id).unwrap().uses, 2);
+        e.handle_dock(DockCmd::ChatUpdate { id, pinned: Some(true), repeat: Some(5) }).unwrap();
+        let view = e.chat_view();
+        assert_eq!(view["items"][0]["id"], id);
+        assert!(view["items"][0]["next_in"].as_f64().unwrap() > 290.0);
+        // Zeit abgelaufen, aber noch zu wenig Chat: keine Wiederholung
+        let past = Instant::now() - Duration::from_secs(301);
+        e.chat_repeat.insert(id, (past, e.chat_seen));
+        e.chat_check = past;
+        e.tick();
+        assert_eq!(e.chat_saved.iter().find(|m| m.id == id).unwrap().uses, 2);
+        for u in ["a", "areadoxbot", "b"] {
+            e.tx.send(Inbound::Chat { user: u.into(), msg: "hallo".into() }).unwrap();
+        }
+        e.chat_check = past;
+        e.tick();
+        assert_eq!(e.chat_saved.iter().find(|m| m.id == id).unwrap().uses, 3);
+        e.handle_dock(DockCmd::ChatDelete { id }).unwrap();
+        assert!(e.chat_saved.iter().all(|m| m.id != id));
+        e.shutdown();
     }
 }

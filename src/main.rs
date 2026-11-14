@@ -5,6 +5,7 @@
 
 #[macro_use]
 mod i18n;
+mod chat;
 mod config;
 mod db;
 mod engine;

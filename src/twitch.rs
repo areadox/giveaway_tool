@@ -62,7 +62,9 @@ impl TwitchReader {
                     return;
                 }
                 while !st.load(Ordering::Relaxed) {
-                    if let Err(e) = Self::session(&channel, &tx, &st) {
+                    let res = Self::session(&channel, &tx, &st);
+                    crate::chat::set_connected(false, &channel);
+                    if let Err(e) = res {
                         if st.load(Ordering::Relaxed) {
                             break;
                         }
@@ -86,7 +88,11 @@ impl TwitchReader {
     fn session(channel: &str, tx: &Sender<Inbound>, stop: &AtomicBool) -> std::io::Result<()> {
         let nick = format!("justinfan{}", rand::thread_rng().gen_range(10000..999999));
         let mut sock = connect()?;
-        sock.write_all(t!("NICK {nick}\r\nJOIN #{channel}\r\n", nick = nick, channel = channel).as_bytes())?;
+        sock.write_all(
+            format!("CAP REQ :twitch.tv/tags twitch.tv/commands\r\nNICK {nick}\r\nJOIN #{channel}\r\n")
+                .as_bytes(),
+        )?;
+        crate::chat::set_connected(true, channel);
         let _ = tx.send(Inbound::Log(
             t!("Anonym mit #{channel} verbunden ({nick}).", channel = channel, nick = nick),
             Tone::Cyan,
@@ -114,6 +120,7 @@ impl TwitchReader {
                     sock.write_all(format!("PONG {rest}\r\n", rest = rest).as_bytes())?;
                     continue;
                 }
+                crate::chat::handle_irc(&line);
                 if let Some((user, msg)) = parse_privmsg(&line) {
                     let _ = tx.send(Inbound::Chat { user, msg });
                 }
@@ -165,6 +172,11 @@ impl TwitchSender {
             handle,
             enabled,
         }
+    }
+
+    /// Bot-Account mit Token eingetragen?
+    pub fn enabled(&self) -> bool {
+        self.enabled
     }
 
     pub fn send(&self, text: impl Into<String>) {
