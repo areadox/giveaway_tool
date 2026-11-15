@@ -281,6 +281,7 @@ impl eframe::App for GuiApp {
         let mut action: Option<&'static str> = None;
         let mut new_winners: Option<u32> = None;
         let mut do_update = false;
+        let mut claim_act: Option<(bool, String)> = None;
         {
             let e = self.engine.lock().expect("engine");
             egui::TopBottomPanel::top("header")
@@ -440,6 +441,33 @@ impl eframe::App for GuiApp {
                                 if !info.is_empty() {
                                     ui.label(RichText::new(info.join("  |  ")).color(CYAN));
                                 }
+                                ui.horizontal(|ui| {
+                                    match w.claim.as_str() {
+                                        "pending" => {
+                                            let left = e.claim_left(w).unwrap_or(0.0).ceil() as u64;
+                                            ui.label(
+                                                RichText::new(t!(
+                                                    "⏱ wartet auf {cmd} – {t}",
+                                                    cmd = e.cfg.claim_command_or_default(),
+                                                    t = format!("{}:{:02}", left / 60, left % 60)
+                                                ))
+                                                .color(YELLOW),
+                                            );
+                                            if ui.small_button(t!("✓ Bestätigen")).on_hover_text(t!("Claim von Hand bestätigen")).clicked() {
+                                                claim_act = Some((true, w.login.clone()));
+                                            }
+                                        }
+                                        "claimed" => {
+                                            ui.label(RichText::new(t!("✓ angenommen")).color(GREEN));
+                                        }
+                                        _ => {}
+                                    }
+                                    if w.claim != "claimed"
+                                        && ui.small_button(t!("↻ Neu ziehen")).on_hover_text(t!("Neuen Gewinner ziehen")).clicked()
+                                    {
+                                        claim_act = Some((false, w.login.clone()));
+                                    }
+                                });
                             });
                         });
                     }
@@ -539,6 +567,14 @@ impl eframe::App for GuiApp {
 
         if let Some(n) = new_winners {
             self.engine.lock().expect("engine").set_winners(n);
+        }
+        if let Some((confirm, login)) = claim_act {
+            let mut e = self.engine.lock().expect("engine");
+            if confirm {
+                e.claim_confirm(&login, true);
+            } else {
+                e.claim_reroll(&login);
+            }
         }
         if do_update {
             let mut e = self.engine.lock().expect("engine");
@@ -984,7 +1020,17 @@ fn general_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>
             field(ui, t!("Dauer der Auslosung (Sekunden)"), &mut st.hack, false, t!("Wie lange der simulierte Run im Overlay dauert (mind. 8)"));
             field(ui, t!("Decker-Name im Overlay"), &mut d.decker_name, false, t!("Leer = Twitch-Channel"));
             ui.label(RichText::new(t!("Sound")).color(CYAN));
-            ui.checkbox(&mut d.sound, t!("Soundeffekte im Programm"));
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut d.sound, t!("an"));
+                egui::ComboBox::from_id_salt("sound_output")
+                    .selected_text(if d.sound_output == "system" { t!("über das System") } else { t!("über OBS (Overlay)") })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut d.sound_output, "obs".to_string(), t!("über OBS (Overlay)"));
+                        ui.selectable_value(&mut d.sound_output, "system".to_string(), t!("über das System"));
+                    });
+            })
+            .response
+            .on_hover_text(t!("OBS: In der Overlay-Browserquelle „Audio über OBS steuern“ anhaken – dann regelst du die Lautstärke im OBS-Mixer."));
             ui.end_row();
             ui.label(RichText::new(t!("Overlay")).color(CYAN));
             ui.checkbox(&mut d.overlay_show_open, t!("große Teilnahme-Anzeige zeigen"))
@@ -998,6 +1044,18 @@ fn general_tab(ui: &mut egui::Ui, st: &mut Settings, engine: &Arc<Mutex<Engine>>
             ui.end_row();
             ui.label(RichText::new(t!("Fenster schließen")).color(CYAN));
             ui.checkbox(&mut d.close_to_tray, t!("X schließt in den Tray (Windows) – Beenden über das Tray-Menü"));
+            ui.end_row();
+            ui.label(RichText::new(t!("Gewinner ausblenden")).color(CYAN));
+            ui.add(egui::DragValue::new(&mut d.winner_hide).range(0.0..=3600.0).speed(1.0).suffix(" s"))
+                .on_hover_text(t!("Gewinner-Anzeige im Overlay nach dieser Zeit ausblenden (0 = bleibt bis START/RESET). Im Auto-Modus gilt die Auto-Einstellung."));
+            ui.end_row();
+            ui.label(RichText::new(t!("Claim")).color(CYAN));
+            ui.checkbox(&mut d.claim_enabled, t!("Gewinner müssen den Gewinn im Chat bestätigen"))
+                .on_hover_text(t!("Wer nicht rechtzeitig bestätigt, wird automatisch ersetzt – neu gezogen aus den übrigen Teilnehmern."));
+            ui.end_row();
+            field(ui, t!("Claim-Befehl"), &mut d.claim_command, false, "!claim");
+            ui.label(RichText::new(t!("Claim-Zeit")).color(CYAN));
+            ui.add(egui::DragValue::new(&mut d.claim_seconds).range(10..=3600).speed(1.0).suffix(" s"));
             ui.end_row();
             ui.label(RichText::new(t!("Auto-Giveaway")).color(CYAN));
             ui.checkbox(&mut d.auto_enabled, t!("an – öffnet Giveaways selbst und beginnt danach von vorn"));

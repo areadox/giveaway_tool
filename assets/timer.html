@@ -115,6 +115,10 @@ function fromState(st){
   if(st.mode==='run')return {show:true,state:'run',label:fill('t_run',{}),glyph:U('glyph_run'),value:U('t_run_value')};
   if(st.mode==='winner'){const ws=st.winners||[];const first=(ws[0]&&ws[0].login)||st.winner||'';
     const label=ws.length>1?fill('winners',{n:ws.length}):(ws[0]&&ws[0].prize?fill('t_winner_prize',{prize:esc(ws[0].prize.label)}):fill('t_winner',{}));
+    const pend=ws.filter(w=>w.claim==='pending');
+    if(pend.length){const sec=Math.max(0,Math.ceil(Math.min(...pend.map(w=>w.claim_left||0))));
+      const lbl=esc(U('claim_wait',{cmd:st.claim_cmd||'!claim',t:`${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`}));
+      return {show:true,state:'winner',label:lbl,glyph:U('glyph_win'),value:'@'+(pend.length===1?pend[0].login:first)+(ws.length>1?` +${ws.length-1}`:'')};}
     return {show:true,state:'winner',label,glyph:U('glyph_win'),value:'@'+first+(ws.length>1?` +${ws.length-1}`:'')};}
   if(a.enabled&&a.state==='wartet')return {show:true,state:'wait',label:st.prize?fill('t_wait_prize',{prize}):fill('t_wait',{}),glyph:U('glyph_wait'),remaining:a.remaining,total:a.total};
   return {show:false};
@@ -145,7 +149,7 @@ let retry=500;
 function connect(){
   const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
   ws.onopen=()=>{retry=500;};
-  ws.onmessage=e=>{try{apply(fromState(JSON.parse(e.data)))}catch(err){console.error(err)}};
+  ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.kind==='sfx')return;apply(fromState(m))}catch(err){console.error(err)}};
   ws.onclose=()=>{apply({show:false});setTimeout(connect,retry);retry=Math.min(10000,retry*1.7);};
 }
 async function runDemo(){

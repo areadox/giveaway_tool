@@ -382,6 +382,14 @@ canvas{width:100%;height:100%;display:block}
 .wcard .ph.none{display:grid;place-items:center;color:var(--gold);font-weight:700;font-size:22px}
 .wcard b{font-size:20px;overflow-wrap:anywhere;color:var(--text)}
 .wcard .ev{color:var(--decker);font-size:14px}
+.wclaim{margin-top:10px;font-size:clamp(15px,1.5vw,22px);font-weight:700;color:var(--decker);font-variant-numeric:tabular-nums}
+.winner:not(.has-pic) .wclaim{text-align:center}
+.wclaim.wait{color:var(--gold);animation:claimpulse 1s ease-in-out infinite}
+.wclaim.urgent{color:var(--glitch)}
+@keyframes claimpulse{50%{opacity:.55}}
+.wcard .cl{font-size:13px;font-weight:700;color:var(--decker);font-variant-numeric:tabular-nums}
+.wcard .cl.wait{color:var(--gold)}
+@media (prefers-reduced-motion:reduce){.wclaim.wait{animation:none}}
 .wcard .pz{display:flex;align-items:center;gap:6px;color:var(--gold);font-size:14px;font-weight:600}
 .wcard .no{color:var(--muted);font-size:12px;font-weight:600}
 .wmore{margin-top:10px;text-align:center;color:var(--muted)}
@@ -471,6 +479,7 @@ body[data-view="log"] .left{display:none}
       <strong id="wname"></strong>
       <div id="weve" class="weve" hidden></div>
       <div id="wprize" class="wprize" hidden></div>
+      <div id="wclaim" class="wclaim" hidden></div>
       <p id="wnote"></p>
     </div>
     <div id="wlist" class="wlist" hidden></div>
@@ -1185,8 +1194,10 @@ function apply(st){
     const tick=ev=>[ev.corp?`[${ev.corp}]`:'',ev.alliance?`<${ev.alliance}>`:''].filter(Boolean).join(' ');
     // Spielname: EVE (mit Corp/Allianz) oder der Name des Spiels zum Design (z. B. WoW mit Klasse/Gilde)
     const card=w=>w.eve?{name:w.eve.name,tick:tick(w.eve),pic:w.eve.portrait}:w.ign?{name:w.ign.name,tick:w.ign.sub||'',pic:w.ign.portrait}:null;
+    const clock=s=>{s=Math.max(0,Math.ceil(s||0));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;};
+    const claimTxt=w=>w.claim==='pending'?U('claim_wait',{cmd:st.claim_cmd||'!claim',t:clock(w.claim_left)}):w.claim==='claimed'?U('claim_ok'):'';
     const prizeHtml=p=>p?`${p.icon?`<img src="${esc(p.icon)}" alt="" onerror="this.remove()">`:''}${esc(p.label)}`:'';
-    $('wlist').hidden=!multi;$('wmore').hidden=true;
+    $('wlist').hidden=!multi;$('wmore').hidden=true;$('wclaim').hidden=true;
     $('wname').hidden=multi;$('weve').hidden=true;$('wprize').hidden=true;$('wnote').hidden=multi;
     if(multi){
       $('wpic').hidden=true;$('winner').classList.remove('has-pic');
@@ -1195,7 +1206,8 @@ function apply(st){
         const ev=card(w);const pic=ev&&ev.pic;
         return `<div class="wcard">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.outerHTML='<div class=&quot;ph none&quot;>${i+1}</div>'">`:`<div class="ph none">${i+1}</div>`}
           <b>@${esc(w.login)}</b>${ev?`<span class="ev">${esc(ev.name)} ${esc(ev.tick)}</span>`:''}
-          ${w.prize?`<span class="pz">${prizeHtml(w.prize)}</span>`:`<span class="no">${esc(U('winner_n',{n:i+1}))}</span>`}</div>`;}).join('');
+          ${w.prize?`<span class="pz">${prizeHtml(w.prize)}</span>`:`<span class="no">${esc(U('winner_n',{n:i+1}))}</span>`}
+          ${w.claim?`<span class="cl ${w.claim==='pending'?'wait':''}">${esc(claimTxt(w))}</span>`:''}</div>`;}).join('');
       if(ws.length>max){$('wmore').hidden=false;$('wmore').textContent=U('more',{n:ws.length-max});}
     }else{
       const w=ws[0],ev=card(w);
@@ -1203,6 +1215,8 @@ function apply(st){
       $('weve').hidden=!ev;
       if(ev){const t=ev.tick;$('weve').innerHTML=`${esc(ev.name)}${t?`<span>${esc(t)}</span>`:''}`;}
       $('wprize').hidden=!w.prize;$('wprize').innerHTML=prizeHtml(w.prize);
+      const ct=claimTxt(w);$('wclaim').hidden=!ct;$('wclaim').textContent=ct;
+      $('wclaim').className='wclaim'+(w.claim==='pending'?' wait':'')+(w.claim==='pending'&&w.claim_left<=10?' urgent':'');
       const pic=ev&&ev.pic;
       if(pic&&$('wimg').getAttribute('src')!==pic){$('wimg').src=pic;}
       $('wpic').hidden=!pic;$('winner').classList.toggle('has-pic',!!pic);
@@ -1216,12 +1230,34 @@ function apply(st){
 // Porträt nicht ladbar (offline, unbekannte ID) → Banner ohne Bild
 $('wimg').addEventListener('error',()=>{$('wpic').hidden=true;$('winner').classList.remove('has-pic');});
 
+// ---------- Sound (über OBS: Browserquelle „Audio über OBS steuern“) ----------
+// Gleiche Töne wie früher im Programm; ?sound=0 schaltet sie in dieser Quelle ab.
+const SFX={join:[[660],.11,.22],dice:[[1400,900,1700,1100],.022,.12],ice:[[220,180,150],.07,.25],
+  glitch:[[150,1900,120],.05,.2],win1:[[660],.18,.22],win2:[[990],.24,.22],click:[[880],.045,.22],error:[[190],.18,.25]};
+let actx=null;
+function playSfx(name){
+  if(q.get('sound')==='0')return;
+  const s=SFX[name];if(!s)return;
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended')actx.resume();
+    const [freqs,dur,vol]=s;let t=actx.currentTime+0.01;
+    for(const f of freqs){
+      const o=actx.createOscillator(),g=actx.createGain();
+      o.type='sine';o.frequency.value=f;
+      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+0.008);
+      g.gain.setValueAtTime(vol,Math.max(t+0.008,t+dur-0.025));g.gain.linearRampToValueAtTime(0,t+dur);
+      o.connect(g).connect(actx.destination);o.start(t);o.stop(t+dur+0.01);t+=dur;
+    }
+  }catch(e){}
+}
+
 // ---------- Live / Demo ----------
 let retry=500;
 function connect(){
   const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
   ws.onopen=()=>{retry=500;$('idle').className='idle';$('idle').textContent=U('conn_idle');};
-  ws.onmessage=e=>{try{apply(JSON.parse(e.data))}catch(err){console.error(err)}};
+  ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.kind==='sfx'){playSfx(m.sfx);return;}apply(m)}catch(err){console.error(err)}};
   ws.onclose=()=>{$('idle').className='idle off';$('idle').textContent=U('conn_off')||'—';
     apply({visible:false,mode:'idle'});setTimeout(connect,retry);retry=Math.min(10000,retry*1.7);};
 }

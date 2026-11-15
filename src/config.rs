@@ -19,6 +19,8 @@ pub struct Config {
     pub open_message: String,
     pub close_message: String,
     pub sound: bool,
+    /// Wo die Sounds laufen: "obs" (Overlay-Browserquelle) oder "system"
+    pub sound_output: String,
     pub eve_enabled: bool,
     pub eve_command: String,
     /// Dauer des simulierten Matrix-Runs in Sekunden (neu in der Rust-Version).
@@ -34,6 +36,15 @@ pub struct Config {
     pub auto_interval: String,
     /// Wie lange der Gewinner im Auto-Modus stehen bleibt (Sekunden).
     pub auto_winner_hold: f64,
+    /// Gewinner-Anzeige im Overlay nach so vielen Sekunden ausblenden
+    /// (normaler Modus; 0 = bleibt bis START/RESET).
+    pub winner_hide: f64,
+    /// Claim: Gewinner müssen den Gewinn im Chat bestätigen, sonst wird neu gezogen.
+    pub claim_enabled: bool,
+    /// Chatbefehl zum Bestätigen (z. B. !claim)
+    pub claim_command: String,
+    /// Zeit zum Bestätigen in Sekunden
+    pub claim_seconds: u32,
     /// Anzahl der Gewinner pro Giveaway.
     pub winners: u32,
     /// Freitext, was es zu gewinnen gibt (überschreibt die Kurzfassung der Preisliste).
@@ -97,6 +108,12 @@ pub fn default_messages(lang: &str) -> [&'static str; 3] {
 
 impl Config {
     /// Sprache wechseln; unveränderte Standard-Chattexte wechseln mit.
+    /// Claim-Befehl (leer → „!claim“), klein geschrieben
+    pub fn claim_command_or_default(&self) -> String {
+        let c = self.claim_command.trim().to_lowercase();
+        if c.is_empty() { "!claim".into() } else { c }
+    }
+
     pub fn switch_language(&mut self, lang: &str) {
         let lang = if lang == "en" { "en" } else { "de" };
         if self.language == lang {
@@ -130,6 +147,7 @@ impl Default for Config {
             open_message: "🔓 Giveaway geöffnet! Schreibe {keyword}, um teilzunehmen.".into(),
             close_message: "🔒 Giveaway geschlossen. Viel Glück!".into(),
             sound: true,
+            sound_output: "obs".into(),
             eve_enabled: false,
             eve_command: "!eve".into(),
             hack_duration: 30.0,
@@ -137,6 +155,10 @@ impl Default for Config {
             auto_enabled: false,
             auto_interval: "30:00".into(),
             auto_winner_hold: 20.0,
+            winner_hide: 60.0,
+            claim_enabled: false,
+            claim_command: "!claim".into(),
+            claim_seconds: 60,
             winners: 1,
             prize_text: String::new(),
             prizes: Vec::new(),

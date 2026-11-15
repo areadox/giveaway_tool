@@ -543,9 +543,17 @@ async fn client(mut socket: WebSocket, mut rx: watch::Receiver<String>) {
     if socket.send(Message::Text(first.into())).await.is_err() {
         return;
     }
+    let mut sfx = crate::sound::obs_events().subscribe();
     let mut ping = tokio::time::interval(Duration::from_secs(25));
     loop {
         tokio::select! {
+            got = sfx.recv() => {
+                match got {
+                    Ok(m) => if socket.send(Message::Text(m.into())).await.is_err() { break; },
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(_) => break,
+                }
+            }
             changed = rx.changed() => {
                 if changed.is_err() { break; }
                 let msg = rx.borrow_and_update().clone();

@@ -6,7 +6,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.15** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
+Aktuelle Version: **0.0.16** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
 
 ## Funktionen
 
@@ -41,6 +41,9 @@ Aktuelle Version: **0.0.15** (Releases: siehe [GitHub](https://github.com/areado
   - `?view=graph` nur Host und Würfel, `?view=log` nur Charakterbogen und Protokoll, `?hide=1` blendet den Verbindungshinweis aus
 - **Sprache:** Deutsch oder Englisch (`language`, im Programm unter Einstellungen und im Dock). Gilt für Programmfenster, Dock, Overlay, Timer, alle Designs und Abläufe sowie die Standard-Chattexte; eigene Chattexte bleiben unverändert.
 - **Chat-Bot:** Start-, End- und Gewinnernachricht über einen Bot-Account (OAuth-Token).
+- **Claim (abschaltbar):** Gewinner müssen ihren Gewinn innerhalb einer einstellbaren Zeit mit `!claim` im Chat bestätigen. Overlay, Timer-Anzeige, Programm und Dock zeigen den Countdown. Wer nicht rechtzeitig bestätigt, wird automatisch ersetzt – neu gezogen aus den übrigen Teilnehmern, mit demselben Preis. Von Hand geht es per „✓ Bestätigen“ (z. B. wenn jemand im Voice-Chat zusagt) oder „↻ Neu ziehen“. Im Verlauf landen nur angenommene Gewinne.
+- **Gewinner ausblenden:** Auch im normalen Modus verschwindet die Gewinner-Anzeige im Overlay nach einer einstellbaren Zeit (Standard 60 s, 0 = bleibt bis START/RESET). Mit Claim beginnt die Zeit erst, wenn alle bestätigt haben. Im Auto-Modus gilt weiter die Auto-Einstellung.
+- **Sound über OBS:** Die Soundeffekte laufen standardmäßig über die Overlay-Browserquelle statt über die PC-Lautsprecher. In OBS bei der Browserquelle **„Audio über OBS steuern“** anhaken – dann lässt sich die Lautstärke im Mixer regeln, stummschalten oder auf eigene Spuren legen. Klick- und Fehlertöne der Bedienung gehen nicht in den Stream. Wahlweise weiter „über das System“ (Einstellung `sound_output`). `?sound=0` an der Overlay-URL schaltet die Töne in dieser einen Quelle ab.
 - **Chat-Dock für OBS** (`/chat`): Twitch-Chat live mitlesen und über den Bot schreiben. Jede gesendete Nachricht wird gespeichert und lässt sich per Klick erneut senden, anheften oder automatisch alle X Minuten wiederholen.
 - **EVE-Online-Modus (optional):**
   - `!eve Charaktername` verknüpft einen Twitch-Account mit einem EVE-Charakter (Prüfung über ESI)
@@ -64,9 +67,9 @@ Alle Downloads liegen unter [Releases](https://github.com/areadox/giveaway_tool/
 **Linux** (x86-64, glibc 2.35 oder neuer, z. B. Ubuntu 22.04+, Debian 12+, Fedora 36+)
 1. `CyberGiveaway-linux-x64.tar.gz` herunterladen und entpacken: `tar xzf CyberGiveaway-linux-x64.tar.gz`
 2. Im Ordner `CyberGiveaway` starten: `./CyberGiveaway` (beim einzelnen Programm `CyberGiveaway-linux-x64` vorher `chmod +x CyberGiveaway-linux-x64`).
-3. Benötigt eine grafische Sitzung (X11 oder Wayland). Ohne Fenster nur den Overlay-Server: `./CyberGiveaway --headless`. Soundeffekte gibt es nur unter Windows.
+3. Benötigt eine grafische Sitzung (X11 oder Wayland). Ohne Fenster nur den Overlay-Server: `./CyberGiveaway --headless`. Soundeffekte laufen über die OBS-Browserquelle (die Einstellung „über das System“ gibt es nur unter Windows).
 
-**OBS:** eine **Browserquelle** mit `http://localhost:8766` anlegen (1920 × 1080).
+**OBS:** eine **Browserquelle** mit `http://localhost:8766` anlegen (1920 × 1080) und **„Audio über OBS steuern“** anhaken – darüber laufen die Soundeffekte.
 
 Konfiguration und Datenbank liegen immer neben dem Programm.
 
@@ -152,7 +155,10 @@ Das Dock und seine Befehle sind nur vom selben PC aus erreichbar (`localhost`). 
 | `theme` | Design von Overlay und Timer: `shadowrun`, `eve`, `wow`, `palia`, `anime` oder der Ordnername eines eigenen Designs (Standard: `shadowrun`) |
 | `eve_sso_refresh_token`, `eve_sso_character_id`, `eve_sso_character_name` | EVE-Anmeldung (wird vom Programm gesetzt) |
 | `open_message`, `close_message`, `win_message` | Chattexte (`{keyword}`, `{winner}`, `{prize}`). Fehlt `{prize}`, wird der Preis automatisch angehängt; bei mehreren Gewinnern geht je Gewinner eine Nachricht raus (ab 11 Gewinnern eine Sammelliste). |
-| `sound` | Soundeffekte im Programm |
+| `sound` | Soundeffekte an/aus |
+| `sound_output` | `obs` (Overlay-Browserquelle, Standard) oder `system` (PC-Lautsprecher) |
+| `winner_hide` | Gewinner-Anzeige im normalen Modus nach so vielen Sekunden ausblenden (Standard 60, 0 = bleibt) |
+| `claim_enabled`, `claim_command`, `claim_seconds` | Claim: Gewinn im Chat bestätigen (Standard aus, `!claim`, 60 s) |
 | `eve_enabled`, `eve_command` | EVE-Modus (die früheren eve2twitch-Schlüssel werden beim Laden entfernt) |
 
 > Das OAuth-Token steht im Klartext in `config.json`. Die Datei deshalb nicht weitergeben oder ins Repository einchecken (sie steht in `.gitignore`).
@@ -216,6 +222,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.16 | Claim-Funktion (Gewinn mit `!claim` bestätigen, sonst automatisch neu ziehen; Bestätigen/Neu ziehen von Hand); Gewinner-Anzeige auch im normalen Modus nach einstellbarer Zeit ausblenden; Sounds über die OBS-Browserquelle statt über das System |
 | 0.0.15 | Chat-Dock für OBS (`/chat`): Twitch-Chat live lesen, über den Bot schreiben, gesendete Nachrichten merken, erneut senden, anheften und automatisch wiederholen |
 | 0.0.14 | Sprachoption Englisch für alles (Programm, Dock, Overlay, Timer, Designs, Abläufe, Chattexte); eve2twitch-Anbindung entfernt (das Tool verknüpft EVE-Charaktere selbst per `!eve`); Überschrift neutral „Cyber Giveaway“ statt „Matrix-Run“ |
 | 0.0.13 | Spielnamen für andere Spiele (`!wow`, `!palia`, eigene Befehle) – das Design bestimmt, welcher Name beim Gewinner erscheint, EVE bleibt unverändert; WoW-Charaktere mit Bild, Stufe, Klasse und Gilde über die Blizzard-API; Update-Funktion: neue Version prüfen, herunterladen, austauschen und neu starten |
@@ -239,6 +246,9 @@ Cyber Giveaway is a Twitch giveaway tool with an OBS overlay. Viewers enter with
 - **Language:** set *Sprache / Language* to *English* in the program settings or in the dock (config key `language`: `de`/`en`). Program window, dock, overlay, timer, all themes and the default chat messages switch at once; chat messages you changed yourself stay as they are.
 - **Setup:** download `CyberGiveaway.exe` from the [releases](https://github.com/areadox/giveaway_tool/releases), start it, enter your Twitch channel (and optionally a bot account with OAuth token) under Settings.
 - **OBS:** add `http://localhost:8766` as a browser source (overlay), `http://localhost:8766/timer` for the small timer display, and `http://localhost:8766/dock` as a custom browser dock.
+- **Claim:** optionally winners must type `!claim` within a set time, otherwise a new winner is drawn automatically (manual confirm/redraw buttons in the program and dock).
+- **Hide winners:** the winner display disappears from the overlay after a set time (`winner_hide`, default 60 s).
+- **Sound via OBS:** sound effects play in the overlay browser source; tick “Control audio via OBS” there to control the volume in the OBS mixer (`sound_output`: `obs` or `system`).
 - **Chat dock:** `http://localhost:8766/chat` as a second custom browser dock shows the Twitch chat live and sends messages via the bot. Every sent message is saved and can be resent with one click, pinned, or repeated automatically every few minutes (optionally only after n new chat messages).
 - **Game names:** `!eve Name` links an EVE character (portrait, corp and alliance via ESI), `!wow Name-Realm` a WoW character (via the Blizzard API), further games can be added under Settings → Chat & games.
 - **Custom themes:** copy `themes/_vorlage` next to the .exe; `theme.json` holds the German texts, `theme.en.json` the English ones. See `themes/README.txt`.

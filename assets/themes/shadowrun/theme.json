@@ -39,6 +39,8 @@
     "winner_many": "Paydata extrahiert – {n} Gewinner",
     "winner_note": "{count} Personas im Register · Overwatch {os}/{max}",
     "converged_note": "GOD-Konvergenz – aber die Datei war schon raus.",
+    "claim_wait": "{cmd} in {t}",
+    "claim_ok": "✓ angenommen",
     "winner_n": "Gewinner {n}",
     "more": "… und {n} weitere – Liste im Chat",
     "conn_idle": "Overlay verbunden – wartet auf das Giveaway",

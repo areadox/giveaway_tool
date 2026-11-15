@@ -71,7 +71,7 @@ mod tests {
         "ESI HTTP {code}: {body}", "KEYWORD", "RUN (s)", "START", "BREACH", "RESET",
         "Twitch", "Name", "Info", "Updates", "Item", "Overlay", "Sound", "Keyword",
         "Run (s)", "Pause", "Start", "Scopes:", "Dock: START/STOP", "Dock: BREACH",
-        "OVERLAY: {a1} | DEMO: {a1}/test", "STATUS: {s}", "COUNTDOWN: {s}",
+        "OVERLAY: {a1} | DEMO: {a1}/test", "STATUS: {s}", "COUNTDOWN: {s}", "Claim",
         "NICK {nick}\r\nJOIN #{channel}\r\n", "PASS {token}\r\nNICK {a1}\r\nJOIN #{channel}\r\n",
     ];
 
@@ -106,12 +106,16 @@ mod tests {
             }
             let src = std::fs::read_to_string(&path).unwrap().replace("\r\n", "\n");
             let mut rest = src.as_str();
-            while let Some(i) = rest.find("t!(\"") {
+            while let Some(i) = rest.find("t!(") {
                 let before = rest[..i].chars().last();
-                rest = &rest[i + 4..];
+                rest = &rest[i + 3..];
                 if matches!(before, Some(c) if c.is_alphanumeric() || c == '_') {
                     continue;
                 }
+                // auch mehrzeilige Aufrufe: t!(\n    "…"
+                let trimmed = rest.trim_start();
+                let Some(r) = trimmed.strip_prefix('"') else { continue };
+                rest = r;
                 let mut lit = String::new();
                 let mut chars = rest.chars();
                 while let Some(c) = chars.next() {

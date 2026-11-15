@@ -37,6 +37,8 @@
     "winner_many": "Paydata extracted – {n} winners",
     "winner_note": "{count} personas in the register · Overwatch {os}/{max}",
     "converged_note": "GOD convergence – but the file was already out.",
+    "claim_wait": "{cmd} within {t}",
+    "claim_ok": "✓ claimed",
     "winner_n": "Winner {n}",
     "more": "… and {n} more – full list in chat",
     "conn_idle": "Overlay connected – waiting for the giveaway",

@@ -97,9 +97,14 @@ pub struct SettingsPatch {
     pub hack_duration: Option<f64>,
     pub decker_name: Option<String>,
     pub sound: Option<bool>,
+    pub sound_output: Option<String>,
     pub auto_enabled: Option<bool>,
     pub auto_interval: Option<String>,
     pub auto_winner_hold: Option<f64>,
+    pub winner_hide: Option<f64>,
+    pub claim_enabled: Option<bool>,
+    pub claim_command: Option<String>,
+    pub claim_seconds: Option<u32>,
     pub open_message: Option<String>,
     pub close_message: Option<String>,
     pub win_message: Option<String>,
@@ -139,6 +144,8 @@ impl SettingsPatch {
             sound,
             auto_enabled,
             auto_interval,
+            claim_enabled,
+            claim_command,
             open_message,
             close_message,
             win_message,
@@ -184,6 +191,18 @@ impl SettingsPatch {
                 return Err(t!("Gewinner-Anzeige: mindestens 3 Sekunden").into());
             }
             c.auto_winner_hold = h.min(3600.0);
+        }
+        if let Some(o) = &self.sound_output {
+            c.sound_output = if o == "system" { "system".into() } else { "obs".into() };
+        }
+        if let Some(h) = self.winner_hide {
+            if !h.is_finite() || h < 0.0 {
+                return Err(t!("Gewinner ausblenden: Zahl ab 0 Sekunden").into());
+            }
+            c.winner_hide = h.min(3600.0);
+        }
+        if let Some(s) = self.claim_seconds {
+            c.claim_seconds = s;
         }
         if c.keyword.trim().is_empty() {
             c.keyword = "!join".into();
@@ -250,6 +269,14 @@ pub enum DockCmd {
     GameNameDelete {
         login: String,
         game: String,
+    },
+    /// Claim von Hand bestätigen
+    Claim {
+        login: String,
+    },
+    /// Gewinner neu ziehen (z. B. nicht da)
+    Reroll {
+        login: String,
     },
     /// Chat-Dock: Nachricht über den Bot senden (wird gespeichert)
     ChatSend {
@@ -391,6 +418,14 @@ pub struct Winner {
     /// Spielname passend zum Design (wenn nicht EVE)
     pub ign: Option<IgnCard>,
     pub prize: Option<PrizeView>,
+    /// Claim: "" (aus), "pending" (wartet) oder "claimed"
+    #[serde(skip_serializing_if = "str::is_empty")]
+    pub claim: String,
+    /// Restzeit zum Bestätigen (nur zur Anzeige)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claim_left: Option<f64>,
+    #[serde(skip)]
+    pub claim_until: Option<Instant>,
 }
 
 struct GiveawayTimer {
@@ -419,6 +454,7 @@ struct OverlayState<'a> {
     status: &'a str,
     auto: AutoState,
     /// Design-ID; `theme_v` ändert sich, wenn Designs neu geladen wurden.
+    claim_cmd: String,
     theme: String,
     theme_v: u64,
 }
@@ -456,6 +492,10 @@ pub struct Engine {
     auto_deadline: Option<Instant>,
     auto_total: u64,
     won_at: Option<Instant>,
+    /// Gewinner-Anzeige im Overlay ausgeblendet (normaler Modus)
+    winner_hidden: bool,
+    /// Claim: haben nicht bestätigt bzw. schon gezogen – nicht erneut ziehen
+    claim_out: HashSet<String>,
     auto_last_sec: u64,
     sso_pending: Option<sso::Pending>,
     /// Geladene EVE-Assets für die Preisauswahl
@@ -527,6 +567,8 @@ impl Engine {
             auto_deadline: None,
             auto_total: 0,
             won_at: None,
+            winner_hidden: false,
+            claim_out: HashSet::new(),
             auto_last_sec: u64::MAX,
             sso_pending: None,
             assets: Vec::new(),
@@ -776,7 +818,7 @@ impl Engine {
     }
 
     fn sfx(&self, s: Sfx) {
-        sound::play(s, self.cfg.sound);
+        sound::emit(s, self.cfg.sound, &self.cfg.sound_output);
     }
 
     fn set_status(&mut self, s: impl AsRef<str>, tone: Tone) {
@@ -1002,11 +1044,28 @@ impl Engine {
                 eve,
                 ign,
                 prize: prize::for_winner(&self.cfg.prizes, &self.cfg.prize_text, i),
+                claim: String::new(),
+                claim_left: None,
+                claim_until: None,
             });
         }
+        let claim = self.cfg.claim_enabled;
+        if claim {
+            let until = Instant::now() + Duration::from_secs(self.claim_secs());
+            for w in &mut winners {
+                w.claim = "pending".into();
+                w.claim_until = Some(until);
+            }
+        }
+        self.claim_out = winners.iter().map(|w| w.login.clone()).collect();
         self.winners = winners;
         self.phase = Phase::Won;
-        self.set_status(t!("BREACH ERFOLGREICH"), Tone::Green);
+        self.winner_hidden = false;
+        if claim {
+            self.set_status(t!("WARTE AUF CLAIM"), Tone::Yellow);
+        } else {
+            self.set_status(t!("BREACH ERFOLGREICH"), Tone::Green);
+        }
         let count = self.participants.len();
         let many = self.winners.len() > 1;
         for (i, w) in self.winners.clone().iter().enumerate() {
@@ -1021,6 +1080,10 @@ impl Engine {
                 .map(|p| t!(" – Preis: {p}", p = p))
                 .unwrap_or_default();
             self.log(format!("{head}@{}{tail}", w.display), Tone::Yellow);
+            if claim {
+                // Verlauf erst, wenn der Gewinn angenommen wurde
+                continue;
+            }
             if let Err(e) = self.db.add_history(&w.display, count, prize.as_deref()) {
                 self.log(
                     t!("Verlauf konnte nicht gespeichert werden: {e}", e = e),
@@ -1049,9 +1112,10 @@ impl Engine {
             }
             m
         };
+        let hint = self.claim_hint();
         if self.winners.len() <= 10 {
             for w in self.winners.clone() {
-                self.sender.send(line(&w));
+                self.sender.send(format!("{}{hint}", line(&w)));
             }
         } else {
             let names: Vec<String> = self
@@ -1063,6 +1127,198 @@ impl Engine {
                 self.sender
                     .send(t!("🎉 Gewinner: {list}", list = chunk.join(", ")));
             }
+            if !hint.is_empty() {
+                self.sender.send(hint.trim().to_string());
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ Claim
+
+    fn claim_secs(&self) -> u64 {
+        self.cfg.claim_seconds.clamp(10, 3600) as u64
+    }
+
+    /// Zusatz für die Gewinnernachricht, wenn Claim an ist
+    fn claim_hint(&self) -> String {
+        if !self.cfg.claim_enabled {
+            return String::new();
+        }
+        t!(
+            " Schreibe {cmd} innerhalb von {s} Sekunden, um den Gewinn anzunehmen.",
+            cmd = self.cfg.claim_command_or_default(),
+            s = self.claim_secs()
+        )
+    }
+
+    /// Wartet noch ein Gewinner auf seinen Claim?
+    pub fn claim_pending(&self) -> bool {
+        self.phase == Phase::Won && self.winners.iter().any(|w| w.claim == "pending")
+    }
+
+    /// Gewinner hat bestätigt (Chat oder Knopf im Programm/Dock).
+    pub fn claim_confirm(&mut self, login: &str, by_hand: bool) -> bool {
+        if self.phase != Phase::Won {
+            return false;
+        }
+        let Some(i) = self
+            .winners
+            .iter()
+            .position(|w| w.claim == "pending" && w.login.eq_ignore_ascii_case(login))
+        else {
+            return false;
+        };
+        let w = &mut self.winners[i];
+        w.claim = "claimed".into();
+        w.claim_until = None;
+        let w = w.clone();
+        let prize = w.prize.as_ref().map(|p| p.label.clone());
+        if let Err(e) = self.db.add_history(&w.display, self.participants.len(), prize.as_deref()) {
+            self.log(t!("Verlauf konnte nicht gespeichert werden: {e}", e = e), Tone::Red);
+        }
+        self.log(
+            if by_hand {
+                t!("Claim von Hand bestätigt: @{name}", name = w.display)
+            } else {
+                t!("CLAIM: @{name} hat den Gewinn angenommen.", name = w.display)
+            },
+            Tone::Green,
+        );
+        self.sender.send(t!("✅ @{name} hat den Gewinn angenommen!", name = w.login));
+        self.sfx(Sfx::Join);
+        self.claim_check_done();
+        self.dirty = true;
+        true
+    }
+
+    /// Gewinner ersetzen (Zeit abgelaufen oder „Neu ziehen“).
+    pub fn claim_reroll(&mut self, login: &str) -> bool {
+        if self.phase != Phase::Won {
+            return false;
+        }
+        let Some(i) = self
+            .winners
+            .iter()
+            .position(|w| w.login.eq_ignore_ascii_case(login) && w.claim != "claimed")
+        else {
+            return false;
+        };
+        let old = self.winners[i].clone();
+        let pool: Vec<String> = self
+            .participants
+            .iter()
+            .filter(|p| !self.claim_out.contains(*p))
+            .cloned()
+            .collect();
+        let pick = pool.choose(&mut rand::thread_rng()).cloned();
+        match pick {
+            Some(new) => {
+                self.claim_out.insert(new.clone());
+                let eve = self.db.get_user(&new).as_ref().and_then(EveCard::from_user);
+                let eve = if self.ign_game() == "eve" { eve } else { None };
+                let claim = self.cfg.claim_enabled;
+                self.winners[i] = Winner {
+                    login: new.clone(),
+                    display: self.display_name(&new),
+                    eve,
+                    ign: self.ign_card(&new),
+                    prize: old.prize.clone(),
+                    claim: if claim { "pending".into() } else { String::new() },
+                    claim_left: None,
+                    claim_until: claim
+                        .then(|| Instant::now() + Duration::from_secs(self.claim_secs())),
+                };
+                let nd = self.display_name(&new);
+                self.log(
+                    t!("@{old} ersetzt – neuer Gewinner: @{new}", old = old.display, new = nd),
+                    Tone::Yellow,
+                );
+                let prize = old
+                    .prize
+                    .as_ref()
+                    .map(|p| t!(" Preis: {prize}", prize = p.label))
+                    .unwrap_or_default();
+                self.sender.send(format!(
+                    "{}{prize}{}",
+                    t!("🎲 Neu gezogen: @{new} gewinnt!", new = new),
+                    self.claim_hint()
+                ));
+                if !claim {
+                    let _ = self.db.add_history(
+                        &nd,
+                        self.participants.len(),
+                        old.prize.as_ref().map(|p| p.label.as_str()),
+                    );
+                }
+                self.sfx(Sfx::Win1);
+            }
+            None => {
+                self.winners.remove(i);
+                self.log(
+                    t!("@{old} ersetzt – keine weiteren Teilnehmer im Pool.", old = old.display),
+                    Tone::Red,
+                );
+                self.sender.send(t!("Keine weiteren Teilnehmer – der Preis von @{old} verfällt.", old = old.login));
+            }
+        }
+        self.claim_check_done();
+        self.dirty = true;
+        true
+    }
+
+    /// Abgelaufene Claims neu ziehen; sind alle durch, beginnt die Anzeigezeit.
+    fn tick_claim(&mut self) {
+        if !self.claim_pending() {
+            return;
+        }
+        let now = Instant::now();
+        let expired: Vec<String> = self
+            .winners
+            .iter()
+            .filter(|w| w.claim == "pending" && w.claim_until.is_some_and(|t| now >= t))
+            .map(|w| w.login.clone())
+            .collect();
+        for login in expired {
+            let shown = self.display_name(&login);
+            self.log(
+                t!("@{name} hat nicht rechtzeitig geclaimt.", name = shown),
+                Tone::Red,
+            );
+            self.sender.send(t!("⌛ @{name} hat nicht rechtzeitig geclaimt.", name = login));
+            self.claim_reroll(&login);
+        }
+    }
+
+    fn claim_check_done(&mut self) {
+        if self.claim_pending() {
+            return;
+        }
+        if !self.cfg.claim_enabled && self.winners.iter().all(|w| w.claim.is_empty()) {
+            return;
+        }
+        self.won_at = Some(Instant::now());
+        if self.winners.is_empty() {
+            self.set_status(t!("KEIN GEWINNER – NIEMAND HAT GECLAIMT"), Tone::Red);
+        } else {
+            self.set_status(t!("GEWINN ANGENOMMEN"), Tone::Green);
+        }
+    }
+
+    /// Gewinner-Anzeige im normalen Modus nach der eingestellten Zeit ausblenden
+    fn tick_winner_hide(&mut self) {
+        if self.phase != Phase::Won
+            || self.winner_hidden
+            || self.cfg.auto_enabled
+            || self.cfg.winner_hide <= 0.0
+            || self.claim_pending()
+        {
+            return;
+        }
+        let hold = Duration::from_secs_f64(self.cfg.winner_hide.max(3.0));
+        if self.won_at.is_some_and(|t| t.elapsed() >= hold) {
+            self.winner_hidden = true;
+            self.log(t!("Gewinner-Anzeige im Overlay ausgeblendet."), Tone::Dark);
+            self.dirty = true;
         }
     }
 
@@ -1105,6 +1361,8 @@ impl Engine {
         self.run_view = None;
         self.win_sound_at = None;
         self.won_at = None;
+        self.winner_hidden = false;
+        self.claim_out.clear();
         self.auto_deadline = None;
         self.log.clear();
         self.set_status(t!("BEREIT / TEILNAHME GESCHLOSSEN"), Tone::Cyan);
@@ -1283,6 +1541,13 @@ impl Engine {
         }
         let msg = msg.trim().to_string();
         let lower = msg.to_lowercase();
+        if self.claim_pending() {
+            let c = self.cfg.claim_command_or_default();
+            if lower == c || lower.starts_with(&format!("{c} ")) {
+                self.claim_confirm(&user, false);
+                return;
+            }
+        }
         if lower == self.active_keyword.to_lowercase() {
             if self.phase != Phase::Open {
                 return;
@@ -1631,6 +1896,12 @@ impl Engine {
         themes::registry().get(&self.cfg.theme).info.id.clone()
     }
 
+    /// Restsekunden zum Bestätigen
+    pub fn claim_left(&self, w: &Winner) -> Option<f64> {
+        w.claim_until
+            .map(|t| t.saturating_duration_since(Instant::now()).as_secs_f64())
+    }
+
     fn overlay_json(&self) -> String {
         let (mode, visible) = match self.phase {
             Phase::Ready => ("idle", false),
@@ -1638,6 +1909,7 @@ impl Engine {
             // (/timer) bekommt den Zustand trotzdem über `mode`.
             Phase::Open => ("open", self.cfg.overlay_show_open),
             Phase::Running => ("run", true),
+            Phase::Won if self.winner_hidden || self.winners.is_empty() => ("idle", false),
             Phase::Won => ("winner", true),
         };
         let recent: Vec<&str> = self
@@ -1677,6 +1949,7 @@ impl Engine {
                     } else {
                         w.ign.clone()
                     },
+                    claim_left: self.claim_left(w),
                     ..w.clone()
                 })
                 .collect(),
@@ -1686,6 +1959,7 @@ impl Engine {
             auto: self.auto_state(),
             theme: self.theme_id(),
             theme_v: themes::registry().version(),
+            claim_cmd: self.cfg.claim_command_or_default(),
         };
         let mut v = serde_json::to_value(&st).unwrap_or(Value::Null);
         if self.cfg.hide_eve_names {
@@ -1695,8 +1969,9 @@ impl Engine {
     }
 
     fn publish(&mut self) {
-        let counting =
-            (self.phase == Phase::Open && self.timer.is_some()) || self.auto_deadline.is_some();
+        let counting = (self.phase == Phase::Open && self.timer.is_some())
+            || self.auto_deadline.is_some()
+            || self.claim_pending();
         let due = counting && self.last_publish.elapsed() >= Duration::from_millis(500);
         if !(self.dirty || due) {
             return;
@@ -1798,6 +2073,16 @@ impl Engine {
                 return Ok(None);
             }
             DockCmd::ChatSaved => return Ok(Some(self.chat_view())),
+            DockCmd::Claim { login } => {
+                if !self.claim_confirm(&login, true) {
+                    return Err(t!("Kein offener Claim für @{name}", name = login));
+                }
+            }
+            DockCmd::Reroll { login } => {
+                if !self.claim_reroll(&login) {
+                    return Err(t!("@{name} kann nicht neu gezogen werden", name = login));
+                }
+            }
             DockCmd::ChatUpdate {
                 id,
                 pinned,
@@ -1864,6 +2149,15 @@ impl Engine {
             "assets_status": self.assets_status, "assets_loading": self.assets_loading,
             "assets_count": self.assets.len(), "assets_version": self.assets_version,
         });
+        for (k, val) in [
+            ("sound_output", serde_json::json!(c.sound_output)),
+            ("winner_hide", serde_json::json!(c.winner_hide)),
+            ("claim_enabled", serde_json::json!(c.claim_enabled)),
+            ("claim_command", serde_json::json!(c.claim_command)),
+            ("claim_seconds", serde_json::json!(c.claim_seconds)),
+        ] {
+            v[k] = val;
+        }
         let extra = serde_json::json!({
             "ign_game": self.ign_game(),
             "games_text": c.games_text(),
@@ -1923,8 +2217,11 @@ impl Engine {
             "duration": self.cfg.timer_duration,
             "hack": self.cfg.hack_duration,
             "winners": self.winners.iter().map(|w| serde_json::json!({
-                "login": w.login, "display": w.display, "eve": w.eve, "ign": w.ign, "prize": w.prize
+                "login": w.login, "display": w.display, "eve": w.eve, "ign": w.ign, "prize": w.prize,
+                "claim": w.claim, "claim_left": self.claim_left(w)
             })).collect::<Vec<_>>(),
+            "winner_hidden": self.winner_hidden,
+            "claim_cmd": self.cfg.claim_command_or_default(),
             "winners_count": self.cfg.winners.max(1),
             "prize": self.prize_summary(),
             "auto": self.auto_state(),
@@ -2036,6 +2333,8 @@ impl Engine {
         self.drain_inbox();
         self.tick_timer();
         self.tick_run();
+        self.tick_claim();
+        self.tick_winner_hide();
         self.tick_auto();
         self.tick_chat_repeat();
         if let Some(at) = self.win_sound_at {
@@ -2198,7 +2497,7 @@ impl Engine {
             Phase::Won => {
                 // Gewinner eine Weile stehen lassen, dann leise zurück auf „bereit“
                 let hold = Duration::from_secs_f64(self.cfg.auto_winner_hold.clamp(3.0, 3600.0));
-                if self.won_at.is_some_and(|t| t.elapsed() >= hold) {
+                if !self.claim_pending() && self.won_at.is_some_and(|t| t.elapsed() >= hold) {
                     self.won_at = None;
                     self.phase = Phase::Ready;
                     self.participants.clear();
@@ -3034,6 +3333,66 @@ mod tests {
         assert_eq!(e.chat_saved.iter().find(|m| m.id == id).unwrap().uses, 3);
         e.handle_dock(DockCmd::ChatDelete { id }).unwrap();
         assert!(e.chat_saved.iter().all(|m| m.id != id));
+        e.shutdown();
+    }
+
+    #[test]
+    fn claim_und_ausblenden() {
+        let dir = std::env::temp_dir().join(format!("cg-claim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("g.db")).unwrap();
+        let mut e = Engine::new(
+            Config {
+                web_port: 19566,
+                sound: false,
+                claim_enabled: true,
+                claim_seconds: 30,
+                winner_hide: 5.0,
+                ..Default::default()
+            },
+            db.clone(),
+        );
+        e.participants = vec!["anna".into(), "ben".into(), "cleo".into()];
+        e.finish_breach(vec!["anna".into()]);
+        assert!(e.claim_pending());
+        assert_eq!(e.winners[0].claim, "pending");
+        assert!(e.claim_left(&e.winners[0]).unwrap() > 25.0);
+        // Verlauf erst nach dem Claim
+        assert!(db.history(10).is_empty());
+        // jemand anderes kann nicht claimen
+        e.tx.send(Inbound::Chat { user: "ben".into(), msg: "!claim".into() }).unwrap();
+        e.tick();
+        assert!(e.claim_pending());
+        // Zeit abgelaufen → neu gezogen
+        e.winners[0].claim_until = Some(Instant::now() - Duration::from_secs(1));
+        e.tick();
+        let second = e.winners[0].login.clone();
+        assert_ne!(second, "anna");
+        assert_eq!(e.winners[0].claim, "pending");
+        // neuer Gewinner claimt im Chat
+        e.tx.send(Inbound::Chat { user: second.clone(), msg: "!Claim".into() }).unwrap();
+        e.tick();
+        assert!(!e.claim_pending());
+        assert_eq!(e.winners[0].claim, "claimed");
+        assert_eq!(db.history(10).len(), 1);
+        // Overlay zeigt den Gewinner, bis die Zeit um ist
+        assert!(e.overlay_json().contains("\"mode\":\"winner\""));
+        e.won_at = Some(Instant::now() - Duration::from_secs(6));
+        e.tick();
+        assert!(e.winner_hidden);
+        let ov = e.overlay_json();
+        assert!(ov.contains("\"mode\":\"idle\"") && ov.contains("\"visible\":false"));
+        // Pool erschöpft: Preis verfällt
+        e.reset();
+        e.participants = vec!["anna".into(), "ben".into()];
+        e.finish_breach(vec!["anna".into()]);
+        assert!(e.handle_dock(DockCmd::Reroll { login: "anna".into() }).is_ok());
+        assert_eq!(e.winners[0].login, "ben");
+        assert!(e.handle_dock(DockCmd::Reroll { login: "ben".into() }).is_ok());
+        assert!(e.winners.is_empty());
+        assert!(!e.claim_pending());
+        assert!(e.handle_dock(DockCmd::Claim { login: "ben".into() }).is_err());
         e.shutdown();
     }
 }

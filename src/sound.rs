@@ -1,4 +1,49 @@
-//! Kurze, synthetisch erzeugte Soundeffekte (Windows: PlaySound aus dem Speicher).
+//! Kurze, synthetisch erzeugte Soundeffekte.
+//!
+//! Ausgabe wahlweise über das OBS-Overlay (Browserquelle spielt sie per
+//! WebAudio ab – Lautstärke dann im OBS-Mixer) oder über das System
+//! (Windows: PlaySound aus dem Speicher).
+
+use std::sync::OnceLock;
+use tokio::sync::broadcast;
+
+/// Soundereignisse für das Overlay (`/ws`)
+pub fn obs_events() -> &'static broadcast::Sender<String> {
+    static TX: OnceLock<broadcast::Sender<String>> = OnceLock::new();
+    TX.get_or_init(|| broadcast::channel(64).0)
+}
+
+impl Sfx {
+    pub fn name(self) -> &'static str {
+        match self {
+            Sfx::Click => "click",
+            Sfx::Join => "join",
+            Sfx::Error => "error",
+            Sfx::Dice => "dice",
+            Sfx::Ice => "ice",
+            Sfx::Glitch => "glitch",
+            Sfx::Win1 => "win1",
+            Sfx::Win2 => "win2",
+        }
+    }
+
+    /// Nur Rückmeldung für die Bedienung (Klick, Fehler) – nicht in den Stream
+    pub fn ui_only(self) -> bool {
+        matches!(self, Sfx::Click | Sfx::Error)
+    }
+}
+
+/// Sound ausgeben: `output` ist "obs" oder "system".
+pub fn emit(s: Sfx, enabled: bool, output: &str) {
+    if !enabled {
+        return;
+    }
+    if output == "system" {
+        play(s, true);
+    } else if !s.ui_only() {
+        let _ = obs_events().send(format!(r#"{{"kind":"sfx","sfx":"{}"}}"#, s.name()));
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sfx {
@@ -70,7 +115,6 @@ pub fn wav(s: Sfx) -> Vec<u8> {
 
 #[cfg(windows)]
 pub fn play(s: Sfx, enabled: bool) {
-    use std::sync::OnceLock;
     use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT};
     if !enabled {
         return;

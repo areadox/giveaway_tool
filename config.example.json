@@ -11,6 +11,10 @@
   "auto_enabled": false,
   "auto_interval": "30:00",
   "auto_winner_hold": 20.0,
+  "winner_hide": 60.0,
+  "claim_enabled": false,
+  "claim_command": "!claim",
+  "claim_seconds": 60,
   "winners": 1,
   "prize_text": "",
   "prizes": [],
@@ -23,6 +27,7 @@
   "open_message": "🔓 Giveaway geöffnet! Schreibe {keyword}, um teilzunehmen.",
   "close_message": "🔒 Giveaway geschlossen.",
   "sound": true,
+  "sound_output": "obs",
   "eve_enabled": false,
   "eve_command": "!eve"
 }

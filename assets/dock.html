@@ -56,6 +56,12 @@ button,input{font:inherit;color:inherit}
 .winner small{display:block;color:var(--gold);font-size:12px}
 .winner strong{display:block;font-size:17px;overflow-wrap:anywhere}
 .winner span{display:block;color:var(--decker);font-size:12px}
+.winner>div{flex:1;min-width:0}
+.winner .cl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;font-size:12px;font-weight:700}
+.winner .cl.wait{color:var(--gold)}
+.winner .cl.ok{color:var(--decker)}
+.winner .cl button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:2px;padding:2px 7px;font:inherit;font-size:12px;cursor:pointer}
+.winner .cl button:hover{border-color:var(--muted)}
 .winner .pz{color:var(--gold);display:flex;align-items:center;gap:5px}
 .winner .pz img{width:18px;height:18px}
 .prizebox{border:1px solid var(--line);background:var(--panel);padding:8px 10px;border-radius:3px;font-size:13px;color:var(--gold)}
@@ -182,7 +188,11 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
       <label for="s_hack">Run (s)</label><input type="number" id="s_hack" name="hack_duration" min="8" max="600" step="1">
       <label for="s_win">Gewinner</label><input type="number" id="s_win" name="winners" min="1" max="100" step="1">
       <label for="s_decker">Decker-Name</label><input type="text" id="s_decker" name="decker_name" placeholder="leer = Kanalname">
-      <label class="chk"><input type="checkbox" name="sound"> Soundeffekte im Programm</label>
+      <label class="chk"><input type="checkbox" name="sound"> Soundeffekte</label>
+      <label for="s_sout">Sound über</label><select id="s_sout" name="sound_output"><option value="obs">OBS (Overlay-Browserquelle)</option><option value="system">System (Lautsprecher des PCs)</option></select>
+      <div class="hint">OBS: In der Overlay-Browserquelle „Audio über OBS steuern“ anhaken – dann regelst du die Lautstärke im OBS-Mixer.</div>
+      <label for="s_hide">Gewinner ausblenden (s)</label><input type="number" id="s_hide" name="winner_hide" min="0" max="3600" step="1">
+      <div class="hint">Gewinner-Anzeige im Overlay nach dieser Zeit ausblenden (0 = bleibt bis START/RESET). Im Auto-Modus gilt die Auto-Einstellung.</div>
       <label class="chk"><input type="checkbox" name="overlay_show_open"> Große Teilnahme-Anzeige im Overlay (aus, wenn die Timer-Anzeige genutzt wird)</label>
     </div>
     <h3>Design (Overlay &amp; Timer)</h3>
@@ -190,6 +200,13 @@ summary{cursor:pointer;padding:8px 10px;font-weight:600}
       <label for="s_theme">Design</label><select id="s_theme" name="theme"></select>
       <div class="hint" id="s_theme_hint">Eigene Designs: Ordner „themes“ neben der .exe (Vorlage liegt dort).
         <a href="#" id="themepreview">Vorschau</a> · <a href="#" id="themereload">Designs neu laden</a></div>
+    </div>
+    <h3>Claim</h3>
+    <div class="form">
+      <label class="chk"><input type="checkbox" name="claim_enabled"> Gewinner müssen den Gewinn im Chat bestätigen</label>
+      <label for="s_ccmd">Befehl</label><input type="text" id="s_ccmd" name="claim_command" placeholder="!claim">
+      <label for="s_csec">Zeit (s)</label><input type="number" id="s_csec" name="claim_seconds" min="10" max="3600" step="1">
+      <div class="hint">Wer nicht rechtzeitig bestätigt, wird automatisch ersetzt – neu gezogen aus den übrigen Teilnehmern.</div>
     </div>
     <h3>Auto-Giveaway</h3>
     <div class="form">
@@ -303,6 +320,13 @@ let S=null, online=false, endAt=0, total=0, mode='none', armedUntil=0, filled=fa
 const edited=new Set();
 ['kw','dur','hack','wn'].forEach(id=>$(id).addEventListener('input',()=>edited.add(id)));
 
+function claimHtml(w){
+  const btns=`<button type="button" data-claim="claim" data-login="${esc(w.login)}" title="${esc(T('Claim von Hand bestätigen'))}">✓ ${esc(T('Bestätigen'))}</button><button type="button" data-claim="reroll" data-login="${esc(w.login)}" title="${esc(T('Neuen Gewinner ziehen'))}">↻ ${esc(T('Neu ziehen'))}</button>`;
+  if(w.claim==='pending')return `<span class="cl wait">⏱ ${esc(T('wartet auf {cmd}',{cmd:S.claim_cmd||'!claim'}))} <b data-left="${esc(w.login)}"></b> ${btns}</span>`;
+  if(w.claim==='claimed')return `<span class="cl ok">✓ ${esc(T('angenommen'))}</span>`;
+  return `<span class="cl"><button type="button" data-claim="reroll" data-login="${esc(w.login)}" title="${esc(T('Neuen Gewinner ziehen'))}">↻ ${esc(T('Neu ziehen'))}</button></span>`;
+}
+$('winners').addEventListener('click',ev=>{const b=ev.target.closest('[data-claim]');if(b)send({cmd:b.dataset.claim,login:b.dataset.login});});
 async function send(body){
   $('feedback').textContent='';
   try{
@@ -365,11 +389,15 @@ function render(){
 
   const ws=s.phase==='winner'?(s.winners||[]):[];
   $('winners').hidden=!ws.length;
-  $('winners').innerHTML=ws.map((w,i)=>{const e=w.eve,g=w.ign;
+  const wHtml=ws.map((w,i)=>{const e=w.eve,g=w.ign;
     const pic=e&&e.id?`https://images.evetech.net/characters/${e.id}/portrait?size=64`:(g&&g.portrait)||'';
     const tick=e?[e.name,e.corp?`[${e.corp}]`:'',e.alliance?`<${e.alliance}>`:''].filter(Boolean).join(' '):g?[g.name,g.sub].filter(Boolean).join(' · '):'';
     const pz=w.prize?`<span class="pz">${w.prize.icon?`<img src="${esc(w.prize.icon)}" alt="" onerror="this.remove()">`:''}${esc(w.prize.label)}</span>`:'';
-    return `<div class="winner">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.remove()">`:''}<div><small>${ws.length>1?`Gewinner ${i+1}`:'Gewinner'}</small><strong>@${esc(w.login)}</strong>${tick?`<span>${esc(tick)}</span>`:''}${pz}</div></div>`;}).join('');
+    return `<div class="winner">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.remove()">`:''}<div><small>${ws.length>1?`Gewinner ${i+1}`:'Gewinner'}</small><strong>@${esc(w.login)}</strong>${tick?`<span>${esc(tick)}</span>`:''}${pz}${claimHtml(w)}</div></div>`;}).join('');
+  // nur neu aufbauen, wenn sich etwas geändert hat (Knöpfe bleiben klickbar)
+  if($('winners').dataset.html!==wHtml){$('winners').dataset.html=wHtml;$('winners').innerHTML=wHtml;}
+  for(const w of ws){const el=$('winners').querySelector(`[data-left="${CSS.escape(w.login)}"]`);
+    if(el){const t=Math.max(0,Math.ceil(w.claim_left||0));el.textContent=`${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;}}
 
   $('joined').hidden=!(open&&s.recent.length);
   $('joined').innerHTML=s.recent.map(n=>`<span>${esc(n)}</span>`).join('');
