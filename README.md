@@ -71,6 +71,13 @@ Alle Downloads liegen unter [Releases](https://github.com/areadox/giveaway_tool/
 
 **OBS:** eine **Browserquelle** mit `http://localhost:8766` anlegen (1920 × 1080) und **„Audio über OBS steuern“** anhaken – darüber laufen die Soundeffekte.
 
+Optionen an der Overlay-URL (mit `&` kombinierbar, z. B. `http://localhost:8766/?hide=1&sound=0`):
+
+| Option | Wirkung |
+|---|---|
+| `?hide=1` | blendet den Hinweis „Overlay verbunden – wartet …“ unten links aus |
+| `?sound=0` | keine Soundeffekte aus dieser Browserquelle |
+
 Konfiguration und Datenbank liegen immer neben dem Programm.
 
 ## Tray (Infobereich)
@@ -246,7 +253,7 @@ Cyber Giveaway is a Twitch giveaway tool with an OBS overlay. Viewers enter with
 
 - **Language:** set *Sprache / Language* to *English* in the program settings or in the dock (config key `language`: `de`/`en`). Program window, dock, overlay, timer, all themes and the default chat messages switch at once; chat messages you changed yourself stay as they are.
 - **Setup:** download `CyberGiveaway.exe` from the [releases](https://github.com/areadox/giveaway_tool/releases), start it, enter your Twitch channel (and optionally a bot account with OAuth token) under Settings.
-- **OBS:** add `http://localhost:8766` as a browser source (overlay), `http://localhost:8766/timer` for the small timer display, and `http://localhost:8766/dock` as a custom browser dock.
+- **OBS:** add `http://localhost:8766` as a browser source (overlay), `http://localhost:8766/timer` for the small timer display, and `http://localhost:8766/dock` as a custom browser dock. Add `?hide=1` to the overlay URL to hide the “Overlay connected” note in the bottom left (`?sound=0` mutes that source; combine with `&`).
 - **Claim:** optionally winners must type `!claim` within a set time, otherwise a new winner is drawn automatically (manual confirm/redraw buttons in the program and dock).
 - **Hide winners:** the winner display disappears from the overlay after a set time (`winner_hide`, default 60 s).
 - **Sound via OBS:** sound effects play in the overlay browser source; tick “Control audio via OBS” there to control the volume in the OBS mixer (`sound_output`: `obs` or `system`).
