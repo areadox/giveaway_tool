@@ -374,7 +374,21 @@ function render(){
   else if(open){mode='static';$('clock').textContent=T('Manuell');$('sub').innerHTML=`Chat: <kbd>${esc(s.keyword)}</kbd> · ${esc(T('Ende per Hand'))}`;}
   else if(s.phase==='run'&&s.run){mode='static';$('clock').textContent=`OW ${s.run.os}/${s.run.os_max}`;
     $('sub').textContent=s.run.phase;$('prog').style.width=`${Math.round(s.run.overall*100)}%`;}
-  else if(s.phase==='winner'){mode='static';$('clock').textContent=T('Erfolg');$('sub').textContent='';$('prog').style.width='100%';}
+  else if(s.phase==='winner'){mode='static';
+    const pend=(s.winners||[]).filter(w=>w.claim==='pending');
+    if(pend.length){
+      // Claim läuft: kürzeste Restzeit groß, Balken läuft ab
+      const left=Math.max(0,Math.min(...pend.map(w=>w.claim_left||0)));const t=Math.ceil(left);
+      $('clock').textContent=`${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
+      $('clock').classList.toggle('urgent',t<=10);
+      $('sub').innerHTML=esc(pend.length>1?T('{n} Gewinner müssen {cmd} schreiben',{n:pend.length,cmd:s.claim_cmd||'!claim'}):T('@{name} muss {cmd} schreiben',{name:pend[0].login,cmd:s.claim_cmd||'!claim'}));
+      $('prog').style.width=`${Math.max(0,Math.min(100,left/(s.claim_total||60)*100))}%`;
+    }else{
+      const anyClaim=(s.winners||[]).some(w=>w.claim==='claimed');
+      $('clock').textContent=!(s.winners||[]).length?T('Kein Gewinner'):anyClaim?T('Angenommen'):T('Erfolg');
+      $('sub').textContent=s.winner_hidden?T('Im Overlay ausgeblendet'):'';
+      $('prog').style.width='100%';
+    }}
   else if(a.state==='wartet'){mode='auto';endAt=performance.now()+a.remaining*1000;total=a.total;$('sub').textContent=T('bis zum nächsten Auto-Giveaway');}
   else{mode='static';$('clock').textContent='—';$('sub').textContent='';$('prog').style.width='0';}
 
@@ -393,7 +407,7 @@ function render(){
     const pic=e&&e.id?`https://images.evetech.net/characters/${e.id}/portrait?size=64`:(g&&g.portrait)||'';
     const tick=e?[e.name,e.corp?`[${e.corp}]`:'',e.alliance?`<${e.alliance}>`:''].filter(Boolean).join(' '):g?[g.name,g.sub].filter(Boolean).join(' · '):'';
     const pz=w.prize?`<span class="pz">${w.prize.icon?`<img src="${esc(w.prize.icon)}" alt="" onerror="this.remove()">`:''}${esc(w.prize.label)}</span>`:'';
-    return `<div class="winner">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.remove()">`:''}<div><small>${ws.length>1?`Gewinner ${i+1}`:'Gewinner'}</small><strong>@${esc(w.login)}</strong>${tick?`<span>${esc(tick)}</span>`:''}${pz}${claimHtml(w)}</div></div>`;}).join('');
+    return `<div class="winner">${pic?`<img class="ph" src="${esc(pic)}" alt="" onerror="this.remove()">`:''}<div><small>${esc(ws.length>1?T('Gewinner {n}',{n:i+1}):T('Gewinner'))}</small><strong>@${esc(w.login)}</strong>${tick?`<span>${esc(tick)}</span>`:''}${pz}${claimHtml(w)}</div></div>`;}).join('');
   // nur neu aufbauen, wenn sich etwas geändert hat (Knöpfe bleiben klickbar)
   if($('winners').dataset.html!==wHtml){$('winners').dataset.html=wHtml;$('winners').innerHTML=wHtml;}
   for(const w of ws){const el=$('winners').querySelector(`[data-left="${CSS.escape(w.login)}"]`);

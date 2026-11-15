@@ -204,6 +204,7 @@ impl SettingsPatch {
         if let Some(s) = self.claim_seconds {
             c.claim_seconds = s;
         }
+        c.sanitize();
         if c.keyword.trim().is_empty() {
             c.keyword = "!join".into();
         }
@@ -455,6 +456,7 @@ struct OverlayState<'a> {
     auto: AutoState,
     /// Design-ID; `theme_v` ändert sich, wenn Designs neu geladen wurden.
     claim_cmd: String,
+    claim_total: u64,
     theme: String,
     theme_v: u64,
 }
@@ -1229,6 +1231,7 @@ impl Engine {
                         .then(|| Instant::now() + Duration::from_secs(self.claim_secs())),
                 };
                 let nd = self.display_name(&new);
+                self.run_view_swap(&old.login, Some(&new));
                 self.log(
                     t!("@{old} ersetzt – neuer Gewinner: @{new}", old = old.display, new = nd),
                     Tone::Yellow,
@@ -1254,6 +1257,7 @@ impl Engine {
             }
             None => {
                 self.winners.remove(i);
+                self.run_view_swap(&old.login, None);
                 self.log(
                     t!("@{old} ersetzt – keine weiteren Teilnehmer im Pool.", old = old.display),
                     Tone::Red,
@@ -1264,6 +1268,44 @@ impl Engine {
         self.claim_check_done();
         self.dirty = true;
         true
+    }
+
+    /// Abschlussbild der Auslosung nach „Neu ziehen“ anpassen, damit dort
+    /// nicht weiter der alte Gewinner markiert ist.
+    fn run_view_swap(&mut self, old: &str, new: Option<&str>) {
+        let Some(v) = self.run_view.as_mut() else { return };
+        for c in &mut v.candidates {
+            if c.name == old {
+                c.state = "raus".into();
+            }
+            if Some(c.name.as_str()) == new {
+                c.state = "gewinner".into();
+            }
+        }
+        if let Some(n) = new {
+            if !v.candidates.is_empty() && !v.candidates.iter().any(|c| c.name == n) {
+                v.candidates.push(crate::matrix::Candidate {
+                    name: n.to_string(),
+                    state: "gewinner".into(),
+                    value: None,
+                });
+            }
+        }
+        match new {
+            Some(n) => {
+                for w in &mut v.winners {
+                    if w == old {
+                        *w = n.to_string();
+                    }
+                }
+            }
+            None => v.winners.retain(|w| w != old),
+        }
+        let text = match new {
+            Some(n) => t!("NACHGEZOGEN // @{new} ersetzt @{old}", new = n, old = old),
+            None => t!("@{old} ist raus – kein Ersatz im Pool", old = old),
+        };
+        v.log.push(crate::matrix::LogLine { text, tone: "warn".into() });
     }
 
     /// Abgelaufene Claims neu ziehen; sind alle durch, beginnt die Anzeigezeit.
@@ -1960,6 +2002,7 @@ impl Engine {
             theme: self.theme_id(),
             theme_v: themes::registry().version(),
             claim_cmd: self.cfg.claim_command_or_default(),
+            claim_total: self.claim_secs(),
         };
         let mut v = serde_json::to_value(&st).unwrap_or(Value::Null);
         if self.cfg.hide_eve_names {
@@ -2221,6 +2264,7 @@ impl Engine {
                 "claim": w.claim, "claim_left": self.claim_left(w)
             })).collect::<Vec<_>>(),
             "winner_hidden": self.winner_hidden,
+            "claim_total": self.claim_secs(),
             "claim_cmd": self.cfg.claim_command_or_default(),
             "winners_count": self.cfg.winners.max(1),
             "prize": self.prize_summary(),
@@ -2265,6 +2309,7 @@ impl Engine {
             new.language = self.cfg.language.clone();
             new.switch_language(&target);
         }
+        new.sanitize();
         self.validate_config(&new)?;
         let auto_changed = new.auto_enabled != self.cfg.auto_enabled
             || new.auto_interval != self.cfg.auto_interval;

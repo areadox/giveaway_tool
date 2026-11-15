@@ -6,7 +6,7 @@ Twitch-Giveaway-Tool für **Areadox Gaming** mit OBS-Overlay. Zuschauer treten p
 
 Rust-Neuimplementierung der früheren Python-Version (`CyberGiveaway.exe`). `config.json` und `giveaway.db` der alten Version können direkt weiterverwendet werden.
 
-Aktuelle Version: **0.0.16** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
+Aktuelle Version: **0.0.17** (Releases: siehe [GitHub](https://github.com/areadox/giveaway_tool/releases))
 
 ## Funktionen
 
@@ -41,7 +41,7 @@ Aktuelle Version: **0.0.16** (Releases: siehe [GitHub](https://github.com/areado
   - `?view=graph` nur Host und Würfel, `?view=log` nur Charakterbogen und Protokoll, `?hide=1` blendet den Verbindungshinweis aus
 - **Sprache:** Deutsch oder Englisch (`language`, im Programm unter Einstellungen und im Dock). Gilt für Programmfenster, Dock, Overlay, Timer, alle Designs und Abläufe sowie die Standard-Chattexte; eigene Chattexte bleiben unverändert.
 - **Chat-Bot:** Start-, End- und Gewinnernachricht über einen Bot-Account (OAuth-Token).
-- **Claim (abschaltbar):** Gewinner müssen ihren Gewinn innerhalb einer einstellbaren Zeit mit `!claim` im Chat bestätigen. Overlay, Timer-Anzeige, Programm und Dock zeigen den Countdown. Wer nicht rechtzeitig bestätigt, wird automatisch ersetzt – neu gezogen aus den übrigen Teilnehmern, mit demselben Preis. Von Hand geht es per „✓ Bestätigen“ (z. B. wenn jemand im Voice-Chat zusagt) oder „↻ Neu ziehen“. Im Verlauf landen nur angenommene Gewinne.
+- **Claim (abschaltbar):** Gewinner müssen ihren Gewinn innerhalb einer einstellbaren Zeit mit `!claim` im Chat bestätigen. Overlay, Timer-Anzeige (Leiste läuft ab), Programm (CLAIM-ZEIT) und Dock (große Uhr mit Balken) zeigen den Countdown. Wer nicht rechtzeitig bestätigt, wird automatisch ersetzt – neu gezogen aus den übrigen Teilnehmern, mit demselben Preis. Von Hand geht es per „✓ Bestätigen“ (z. B. wenn jemand im Voice-Chat zusagt) oder „↻ Neu ziehen“. Im Verlauf landen nur angenommene Gewinne. Nach dem Neuziehen markiert auch die Auslosung im Overlay den neuen Gewinner (Teilnehmerliste und Run-Log: „NACHGEZOGEN“). Die Claim-Zeit liegt zwischen 10 und 3600 Sekunden; kleinere Werte werden beim Speichern auf 10 gesetzt.
 - **Gewinner ausblenden:** Auch im normalen Modus verschwindet die Gewinner-Anzeige im Overlay nach einer einstellbaren Zeit (Standard 60 s, 0 = bleibt bis START/RESET). Mit Claim beginnt die Zeit erst, wenn alle bestätigt haben. Im Auto-Modus gilt weiter die Auto-Einstellung.
 - **Sound über OBS:** Die Soundeffekte laufen standardmäßig über die Overlay-Browserquelle statt über die PC-Lautsprecher. In OBS bei der Browserquelle **„Audio über OBS steuern“** anhaken – dann lässt sich die Lautstärke im Mixer regeln, stummschalten oder auf eigene Spuren legen. Klick- und Fehlertöne der Bedienung gehen nicht in den Stream. Wahlweise weiter „über das System“ (Einstellung `sound_output`). `?sound=0` an der Overlay-URL schaltet die Töne in dieser einen Quelle ab.
 - **Chat-Dock für OBS** (`/chat`): Twitch-Chat live mitlesen und über den Bot schreiben. Jede gesendete Nachricht wird gespeichert und lässt sich per Klick erneut senden, anheften oder automatisch alle X Minuten wiederholen.
@@ -222,6 +222,7 @@ Ohne Fenster nur den Overlay-Server starten (zum Testen): `CyberGiveaway --headl
 
 | Version | Änderungen |
 |---|---|
+| 0.0.17 | Gewinner- und Claim-Anzeige korrigiert: Dock zeigt die Claim-Restzeit statt „Erfolg“, Programmfenster „CLAIM-ZEIT“, Timer-Leiste läuft mit der Claim-Zeit ab; nach „Neu ziehen“ markiert die Auslosung den neuen Gewinner; Einstellungen werden auf die tatsächlich verwendeten Werte gebracht (Claim-Zeit mind. 10 s); Dock-Gewinnerkarten übersetzt |
 | 0.0.16 | Claim-Funktion (Gewinn mit `!claim` bestätigen, sonst automatisch neu ziehen; Bestätigen/Neu ziehen von Hand); Gewinner-Anzeige auch im normalen Modus nach einstellbarer Zeit ausblenden; Sounds über die OBS-Browserquelle statt über das System |
 | 0.0.15 | Chat-Dock für OBS (`/chat`): Twitch-Chat live lesen, über den Bot schreiben, gesendete Nachrichten merken, erneut senden, anheften und automatisch wiederholen |
 | 0.0.14 | Sprachoption Englisch für alles (Programm, Dock, Overlay, Timer, Designs, Abläufe, Chattexte); eve2twitch-Anbindung entfernt (das Tool verknüpft EVE-Charaktere selbst per `!eve`); Überschrift neutral „Cyber Giveaway“ statt „Matrix-Run“ |

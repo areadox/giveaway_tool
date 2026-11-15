@@ -108,6 +108,20 @@ pub fn default_messages(lang: &str) -> [&'static str; 3] {
 
 impl Config {
     /// Sprache wechseln; unveränderte Standard-Chattexte wechseln mit.
+    /// Werte auf das bringen, was das Programm tatsächlich verwendet –
+    /// damit Anzeige, Einstellungen und Verhalten übereinstimmen.
+    pub fn sanitize(&mut self) {
+        self.claim_seconds = self.claim_seconds.clamp(10, 3600);
+        if !self.winner_hide.is_finite() || self.winner_hide < 0.0 {
+            self.winner_hide = 0.0;
+        } else if self.winner_hide > 0.0 {
+            self.winner_hide = self.winner_hide.clamp(3.0, 3600.0);
+        }
+        if self.sound_output != "system" {
+            self.sound_output = "obs".into();
+        }
+    }
+
     /// Claim-Befehl (leer → „!claim“), klein geschrieben
     pub fn claim_command_or_default(&self) -> String {
         let c = self.claim_command.trim().to_lowercase();
@@ -317,7 +331,9 @@ pub fn load(path: &Path) -> Config {
             serde_json::json!(p.clamp(1.0, 65535.0) as u16),
         );
     }
-    serde_json::from_value(Value::Object(map)).unwrap_or_default()
+    let mut c: Config = serde_json::from_value(Value::Object(map)).unwrap_or_default();
+    c.sanitize();
+    c
 }
 
 pub fn save(path: &Path, cfg: &Config) -> std::io::Result<()> {
@@ -380,6 +396,10 @@ mod tests {
         std::fs::write(&p, r#"{"language":"en","eve_api_key":"x"}"#).unwrap();
         let c = load(&p);
         assert_eq!(c.open_message, default_messages("en")[0]);
+        // Werte werden auf das gebracht, was das Programm verwendet
+        std::fs::write(&p, r#"{"claim_seconds":3,"winner_hide":1,"sound_output":"x"}"#).unwrap();
+        let c = load(&p);
+        assert_eq!((c.claim_seconds, c.winner_hide, c.sound_output.as_str()), (10, 3.0, "obs"));
         let mut d = c.clone();
         d.switch_language("de");
         assert_eq!(d.win_message, default_messages("de")[2]);

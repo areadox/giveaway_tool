@@ -118,7 +118,7 @@ function fromState(st){
     const pend=ws.filter(w=>w.claim==='pending');
     if(pend.length){const sec=Math.max(0,Math.ceil(Math.min(...pend.map(w=>w.claim_left||0))));
       const lbl=esc(U('claim_wait',{cmd:st.claim_cmd||'!claim',t:`${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`}));
-      return {show:true,state:'winner',label:lbl,glyph:U('glyph_win'),value:'@'+(pend.length===1?pend[0].login:first)+(ws.length>1?` +${ws.length-1}`:'')};}
+      return {show:true,state:'winner',label:lbl,glyph:U('glyph_win'),claimLeft:Math.min(...pend.map(w=>w.claim_left||0)),claimFrac:Math.min(...pend.map(w=>w.claim_left||0))/(st.claim_total||60),value:'@'+(pend.length===1?pend[0].login:first)+(ws.length>1?` +${ws.length-1}`:'')};}
     return {show:true,state:'winner',label,glyph:U('glyph_win'),value:'@'+first+(ws.length>1?` +${ws.length-1}`:'')};}
   if(a.enabled&&a.state==='wartet')return {show:true,state:'wait',label:st.prize?fill('t_wait_prize',{prize}):fill('t_wait',{}),glyph:U('glyph_wait'),remaining:a.remaining,total:a.total};
   return {show:false};
@@ -131,7 +131,9 @@ function apply(v){
   if(v.remaining!=null){endAt=performance.now()+v.remaining*1000;total=v.total||0;}
   else{endAt=0;$('value').textContent=v.value??U('t_manual');}
   if(v.state==='run')bar(1);
-  if(v.state==='winner')bar(1);
+  // Claim: Leiste läuft mit der Claim-Zeit leer
+  if(v.state==='winner')bar(v.claimFrac!=null?Math.max(0,Math.min(1,v.claimFrac)):1);
+  $('chip').classList.toggle('urgent',v.state==='winner'&&v.claimLeft!=null&&v.claimLeft<=10);
   if(v.remaining==null&&v.state==='open')bar(1);
   tick();
 }

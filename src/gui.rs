@@ -366,12 +366,35 @@ impl eframe::App for GuiApp {
                     ui.label(
                         RichText::new(t!("STATUS: {s}", s = e.status)).color(tone(e.status_tone)),
                     );
-                    ui.label(
-                        RichText::new(t!("COUNTDOWN: {s}", s = e.countdown_text))
-                            .color(tone(e.countdown_tone))
-                            .size(16.0)
-                            .strong(),
-                    );
+                    // Während des Claims zeigt die Zeile die Claim-Restzeit
+                    let claim_left = e
+                        .winners
+                        .iter()
+                        .filter(|w| w.claim == "pending")
+                        .filter_map(|w| e.claim_left(w))
+                        .fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.min(x))));
+                    match claim_left {
+                        Some(l) => {
+                            let l = l.ceil() as u64;
+                            ui.label(
+                                RichText::new(t!(
+                                    "CLAIM-ZEIT: {t}",
+                                    t = format!("{}:{:02}", l / 60, l % 60)
+                                ))
+                                .color(if l <= 10 { RED } else { YELLOW })
+                                .size(16.0)
+                                .strong(),
+                            );
+                        }
+                        None => {
+                            ui.label(
+                                RichText::new(t!("COUNTDOWN: {s}", s = e.countdown_text))
+                                    .color(tone(e.countdown_tone))
+                                    .size(16.0)
+                                    .strong(),
+                            );
+                        }
+                    }
                     ui.label(
                         RichText::new(t!("TEILNEHMER: {n}", n = e.participants.len())).color(GREEN),
                     );
@@ -453,12 +476,12 @@ impl eframe::App for GuiApp {
                                                 ))
                                                 .color(YELLOW),
                                             );
-                                            if ui.small_button(t!("✓ Bestätigen")).on_hover_text(t!("Claim von Hand bestätigen")).clicked() {
+                                            if ui.small_button(t!("✔ Bestätigen")).on_hover_text(t!("Claim von Hand bestätigen")).clicked() {
                                                 claim_act = Some((true, w.login.clone()));
                                             }
                                         }
                                         "claimed" => {
-                                            ui.label(RichText::new(t!("✓ angenommen")).color(GREEN));
+                                            ui.label(RichText::new(t!("✔ angenommen")).color(GREEN));
                                         }
                                         _ => {}
                                     }
